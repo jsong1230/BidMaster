@@ -7,8 +7,7 @@ test-spec.md 기준:
 """
 import pytest
 
-# TODO: 구현 후 import 수정
-# from src.core.security import get_password_hash, verify_password
+from src.core.security import get_password_hash, verify_password, validate_password, ValidationError
 
 
 class TestPasswordHashing:
@@ -24,8 +23,7 @@ class TestPasswordHashing:
         password = "SecureP@ss123"
 
         # Act
-        # hash_result = get_password_hash(password)
-        hash_result = None  # TODO: 구현 후 제거
+        hash_result = get_password_hash(password)
 
         # Assert
         assert hash_result is not None
@@ -42,10 +40,8 @@ class TestPasswordHashing:
         password = "SecureP@ss123"
 
         # Act
-        # hash1 = get_password_hash(password)
-        # hash2 = get_password_hash(password)
-        hash1 = None  # TODO: 구현 후 제거
-        hash2 = None  # TODO: 구현 후 제거
+        hash1 = get_password_hash(password)
+        hash2 = get_password_hash(password)
 
         # Assert
         assert hash1 is not None
@@ -60,12 +56,10 @@ class TestPasswordHashing:
         """
         # Arrange
         password = "SecureP@ss123"
-        # password_hash = get_password_hash(password)
-        password_hash = None  # TODO: 구현 후 제거
+        password_hash = get_password_hash(password)
 
         # Act
-        # result = verify_password(password, password_hash)
-        result = False  # TODO: 구현 후 제거
+        result = verify_password(password, password_hash)
 
         # Assert
         assert result is True
@@ -79,12 +73,10 @@ class TestPasswordHashing:
         # Arrange
         password = "SecureP@ss123"
         wrong_password = "WrongP@ss"
-        # password_hash = get_password_hash(password)
-        password_hash = None  # TODO: 구현 후 제거
+        password_hash = get_password_hash(password)
 
         # Act
-        # result = verify_password(wrong_password, password_hash)
-        result = True  # TODO: 구현 후 제거 (올바르면 False여야 함)
+        result = verify_password(wrong_password, password_hash)
 
         # Assert
         assert result is False
@@ -98,12 +90,10 @@ class TestPasswordHashing:
         # Arrange
         password = "SecureP@ss123"
         empty_password = ""
-        # password_hash = get_password_hash(password)
-        password_hash = None  # TODO: 구현 후 제거
+        password_hash = get_password_hash(password)
 
         # Act
-        # result = verify_password(empty_password, password_hash)
-        result = True  # TODO: 구현 후 제거 (올바르면 False여야 함)
+        result = verify_password(empty_password, password_hash)
 
         # Assert
         assert result is False
@@ -122,8 +112,7 @@ class TestPasswordValidation:
         password = "SecureP@ss123"  # 14자
 
         # Act
-        # is_valid = validate_password(password)
-        is_valid = False  # TODO: 구현 후 제거
+        is_valid = validate_password(password)
 
         # Assert
         assert is_valid is True
@@ -137,12 +126,11 @@ class TestPasswordValidation:
         # Arrange
         password = "Secur12"  # 7자
 
-        # Act
-        # is_valid = validate_password(password)
-        is_valid = True  # TODO: 구현 후 제거 (올바르면 False여야 함)
+        # Act & Assert
+        with pytest.raises(ValidationError) as exc_info:
+            validate_password(password)
 
-        # Assert
-        assert is_valid is False
+        assert exc_info.value.code == "VALIDATION_001"
 
     def test_비밀번호_최대_길이_64자(self):
         """
@@ -151,11 +139,11 @@ class TestPasswordValidation:
         Then: 검사 통과
         """
         # Arrange
-        password = "A" * 64
+        # 영문 + 숫자 + 특수문자 조합으로 64자 생성
+        password = "Ab1!" + "A" * 60  # 64자
 
         # Act
-        # is_valid = validate_password(password)
-        is_valid = False  # TODO: 구현 후 제거
+        is_valid = validate_password(password)
 
         # Assert
         assert is_valid is True
@@ -169,12 +157,11 @@ class TestPasswordValidation:
         # Arrange
         password = "A" * 65
 
-        # Act
-        # is_valid = validate_password(password)
-        is_valid = True  # TODO: 구현 후 제거 (올바르면 False여야 함)
+        # Act & Assert
+        with pytest.raises(ValidationError) as exc_info:
+            validate_password(password)
 
-        # Assert
-        assert is_valid is False
+        assert exc_info.value.code == "VALIDATION_003"
 
     def test_약한_비밀번호_검사(self):
         """
@@ -185,12 +172,11 @@ class TestPasswordValidation:
         # Arrange
         password = "123456"
 
-        # Act
-        # is_valid = validate_password(password)
-        is_valid = True  # TODO: 구현 후 제거 (올바르면 False여야 함)
+        # Act & Assert
+        with pytest.raises(ValidationError) as exc_info:
+            validate_password(password)
 
-        # Assert
-        assert is_valid is False
+        assert exc_info.value.code == "VALIDATION_001"
 
     def test_영문_숫자_특수문자_조합_검사(self):
         """
@@ -202,8 +188,38 @@ class TestPasswordValidation:
         password = "SecureP@ss123"
 
         # Act
-        # is_valid = validate_password(password)
-        is_valid = False  # TODO: 구현 후 제거
+        is_valid = validate_password(password)
+
+        # Assert
+        assert is_valid is True
+
+    def test_비밀번호에_이메일_포함_시_거부(self):
+        """
+        Given: 이메일과 유사한 비밀번호
+        When: 비밀번호 유효성 검사
+        Then: VALIDATION_001 에러
+        """
+        # Arrange
+        email = "test@example.com"
+        password = "test@example.com"  # 이메일과 동일
+
+        # Act & Assert
+        with pytest.raises(ValidationError) as exc_info:
+            validate_password(password, email=email)
+
+        assert exc_info.value.code == "VALIDATION_001"
+
+    def test_한글_비밀번호_지원(self):
+        """
+        Given: 한글 포함 비밀번호
+        When: 비밀번호 유효성 검사
+        Then: 검사 통과
+        """
+        # Arrange
+        password = "패스워드123!"
+
+        # Act
+        is_valid = validate_password(password)
 
         # Assert
         assert is_valid is True
