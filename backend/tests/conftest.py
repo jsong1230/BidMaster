@@ -847,3 +847,286 @@ def company_error_codes():
         "PERMISSION_001": PERMISSION_001,
         "PERMISSION_003": PERMISSION_003,
     }
+
+
+# ============================================================
+# F-01 공고 자동 수집 및 매칭 관련 Mock 클래스 & Fixture
+# ============================================================
+
+# 공고 관련 에러 코드 상수
+BID_001 = AppException("BID_001", "공고를 찾을 수 없습니다.", 404)
+BID_002 = AppException("BID_002", "공고가 이미 마감되었습니다.", 400)
+BID_003 = AppException("BID_003", "첨부파일 파싱에 실패했습니다.", 422)
+BID_004 = AppException("BID_004", "공고 수집이 이미 진행 중입니다.", 409)
+BID_005 = AppException("BID_005", "공공데이터포털 API 연동에 실패했습니다.", 502)
+BID_006 = AppException("BID_006", "매칭 분석 중 오류가 발생했습니다.", 500)
+
+
+class MockBid:
+    """공고 Mock"""
+    def __init__(
+        self,
+        id=None,
+        bid_number=None,
+        title=None,
+        organization=None,
+        region=None,
+        category=None,
+        bid_type=None,
+        contract_method=None,
+        budget=None,
+        announcement_date=None,
+        deadline=None,
+        open_date=None,
+        status=None,
+        description=None,
+        scoring_criteria=None,
+        crawled_at=None,
+        deleted_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.bid_number = bid_number or "20260308001-00"
+        self.title = title or "2026년 정보시스템 고도화 사업"
+        self.organization = organization or "행정안전부"
+        self.region = region or "서울"
+        self.category = category or "정보화"
+        self.bid_type = bid_type or "일반경쟁"
+        self.contract_method = contract_method or "적격심사"
+        self.budget = budget or 500000000
+        self.announcement_date = announcement_date or "2026-03-08"
+        self.deadline = deadline or datetime(2026, 3, 22, 17, 0, 0, tzinfo=timezone.utc)
+        self.open_date = open_date or datetime(2026, 3, 23, 10, 0, 0, tzinfo=timezone.utc)
+        self.status = status or "open"
+        self.description = description or "공공기관 정보시스템 고도화 사업"
+        self.scoring_criteria = scoring_criteria or {"technical": 80, "price": 20}
+        self.crawled_at = crawled_at or datetime.now(timezone.utc)
+        self.deleted_at = deleted_at
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class MockBidAttachment:
+    """공고 첨부파일 Mock"""
+    def __init__(
+        self,
+        id=None,
+        bid_id=None,
+        filename=None,
+        file_type=None,
+        file_url=None,
+        extracted_text=None,
+    ):
+        self.id = id or str(uuid4())
+        self.bid_id = bid_id or str(uuid4())
+        self.filename = filename or "제안요청서.pdf"
+        self.file_type = file_type or "PDF"
+        self.file_url = file_url or "https://nara.go.kr/files/rfp.pdf"
+        self.extracted_text = extracted_text
+        self.created_at = datetime.now(timezone.utc)
+
+
+class MockUserBidMatch:
+    """사용자-공고 매칭 결과 Mock"""
+    def __init__(
+        self,
+        id=None,
+        user_id=None,
+        bid_id=None,
+        suitability_score=None,
+        competition_score=0,
+        capability_score=0,
+        market_score=0,
+        total_score=None,
+        recommendation=None,
+        recommendation_reason=None,
+        is_notified=False,
+        analyzed_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.user_id = user_id or str(uuid4())
+        self.bid_id = bid_id or str(uuid4())
+        self.suitability_score = suitability_score or 75.0
+        self.competition_score = competition_score
+        self.capability_score = capability_score
+        self.market_score = market_score
+        self.total_score = total_score or self.suitability_score
+        self.recommendation = recommendation or "recommended"
+        self.recommendation_reason = recommendation_reason or "높은 적합도를 보입니다."
+        self.is_notified = is_notified
+        self.analyzed_at = analyzed_at or datetime.now(timezone.utc)
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class MockHttpResponse:
+    """테스트용 HTTP 응답 Mock"""
+    def __init__(self, status_code: int = 200, json_data: dict | None = None):
+        self.status_code = status_code
+        self._json_data = json_data or {}
+
+    def json(self):
+        return self._json_data
+
+
+class MockBidParserService:
+    """파싱 서비스 Mock (통합 테스트용)"""
+
+    async def parse_attachment(self, attachment):
+        """PDF는 텍스트 반환, 그 외 None"""
+        if attachment.file_type == "PDF":
+            return "추출된 PDF 텍스트 내용"
+        return None
+
+    async def parse_all_for_bid(self, bid_id, attachments):
+        """PDF 첨부파일 수만큼 반환"""
+        return len([a for a in attachments if a.file_type == "PDF"])
+
+
+# 나라장터 API Mock 응답 데이터
+NARA_API_SAMPLE_RESPONSE = {
+    "response": {
+        "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
+        "body": {
+            "items": [
+                {
+                    "bidNtceNo": "20260308001",
+                    "bidNtceOrd": "00",
+                    "bidNtceNm": "2026년 정보시스템 고도화 사업",
+                    "ntceInsttNm": "행정안전부",
+                    "dminsttNm": "정보화전략과",
+                    "presmptPrce": "500000000",
+                    "bidNtceDt": "2026/03/08",
+                    "bidClseDt": "2026/03/22 17:00:00",
+                    "opengDt": "2026/03/23 10:00:00",
+                    "ntceKindNm": "일반경쟁",
+                    "cntrctMthdNm": "적격심사",
+                }
+            ],
+            "numOfRows": 100,
+            "pageNo": 1,
+            "totalCount": 1,
+        }
+    }
+}
+
+NARA_API_EMPTY_RESPONSE = {
+    "response": {
+        "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
+        "body": {"items": [], "numOfRows": 100, "pageNo": 1, "totalCount": 0}
+    }
+}
+
+
+@pytest.fixture(autouse=True)
+def reset_bid_store():
+    """각 테스트 전후로 BidService 인-메모리 저장소 초기화"""
+    try:
+        from src.services.bid_collector_service import _reset_store
+        _reset_store()
+    except (ImportError, AttributeError):
+        pass
+    yield
+    try:
+        from src.services.bid_collector_service import _reset_store
+        _reset_store()
+    except (ImportError, AttributeError):
+        pass
+
+
+@pytest.fixture
+def mock_bid():
+    """테스트용 공고 Mock Fixture"""
+    return MockBid(
+        id=str(uuid4()),
+        bid_number="20260308001-00",
+        title="2026년 정보시스템 고도화 사업",
+        organization="행정안전부",
+        status="open",
+    )
+
+
+@pytest.fixture
+def mock_closed_bid():
+    """테스트용 마감된 공고 Mock Fixture"""
+    return MockBid(
+        id=str(uuid4()),
+        bid_number="20260201001-00",
+        title="2026년 1월 IT 구축 사업",
+        status="closed",
+    )
+
+
+@pytest.fixture
+def mock_bid_attachment_pdf(mock_bid):
+    """테스트용 PDF 첨부파일 Mock Fixture"""
+    return MockBidAttachment(
+        id=str(uuid4()),
+        bid_id=mock_bid.id,
+        filename="제안요청서.pdf",
+        file_type="PDF",
+        file_url="https://nara.go.kr/files/rfp.pdf",
+        extracted_text="제안요청서 추출 텍스트: 정보시스템 구축 요건...",
+    )
+
+
+@pytest.fixture
+def mock_bid_attachment_hwp(mock_bid):
+    """테스트용 HWP 첨부파일 Mock Fixture"""
+    return MockBidAttachment(
+        id=str(uuid4()),
+        bid_id=mock_bid.id,
+        filename="과업지시서.hwp",
+        file_type="HWP",
+        file_url="https://nara.go.kr/files/task.hwp",
+        extracted_text=None,
+    )
+
+
+@pytest.fixture
+def mock_user_bid_match(mock_user, mock_bid):
+    """테스트용 매칭 결과 Mock Fixture"""
+    return MockUserBidMatch(
+        id=str(uuid4()),
+        user_id=mock_user.id,
+        bid_id=mock_bid.id,
+        suitability_score=78.5,
+        total_score=78.5,
+        recommendation="recommended",
+        recommendation_reason="높은 적합도: 회사 업종이 공고 분야와 일치합니다.",
+    )
+
+
+@pytest.fixture
+def mock_low_score_match(mock_user, mock_bid):
+    """테스트용 낮은 점수 매칭 결과 Mock Fixture"""
+    return MockUserBidMatch(
+        id=str(uuid4()),
+        user_id=mock_user.id,
+        bid_id=mock_bid.id,
+        suitability_score=25.0,
+        total_score=25.0,
+        recommendation="not_recommended",
+        recommendation_reason="낮은 적합도: 업종이 공고 분야와 맞지 않습니다.",
+    )
+
+
+@pytest.fixture
+def mock_http_client_for_nara():
+    """나라장터 API 호출용 HTTP 클라이언트 Mock Fixture"""
+    client = AsyncMock()
+    response = MockHttpResponse(status_code=200, json_data=NARA_API_SAMPLE_RESPONSE)
+    client.get = AsyncMock(return_value=response)
+    return client
+
+
+@pytest.fixture
+def bid_error_codes():
+    """공고 관련 에러 코드들"""
+    return {
+        "BID_001": BID_001,
+        "BID_002": BID_002,
+        "BID_003": BID_003,
+        "BID_004": BID_004,
+        "BID_005": BID_005,
+        "BID_006": BID_006,
+    }
