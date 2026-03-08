@@ -900,7 +900,7 @@ class MockBid:
         self.category = category or "정보화"
         self.bid_type = bid_type or "일반경쟁"
         self.contract_method = contract_method or "적격심사"
-        self.budget = budget or 500000000
+        self.budget = budget
         self.estimated_price = estimated_price
         self.announcement_date = announcement_date or "2026-03-08"
         self.deadline = deadline or datetime(2026, 3, 22, 17, 0, 0, tzinfo=timezone.utc)
@@ -1474,3 +1474,64 @@ def strategy_error_codes():
         "STRATEGY_001": STRATEGY_001,
         "STRATEGY_002": STRATEGY_002,
     }
+
+
+@pytest.fixture(autouse=True, scope="session")
+def register_strategy_sample_bids():
+    """
+    투찰 전략 통합 테스트용 샘플 공고 등록
+
+    test_strategy_api.py의 SAMPLE_BID_ID, SAMPLE_BID_ID_LOWEST를
+    bids._SAMPLE_BIDS에 등록하여 strategy 엔드포인트가 200을 반환하도록 함.
+    """
+    try:
+        from src.api.v1.bids import _SAMPLE_BIDS
+        from tests.integration.test_strategy_api import SAMPLE_BID_ID, SAMPLE_BID_ID_LOWEST
+
+        if SAMPLE_BID_ID not in _SAMPLE_BIDS:
+            _SAMPLE_BIDS[SAMPLE_BID_ID] = {
+                "id": SAMPLE_BID_ID,
+                "bidNumber": "20260308002-00",
+                "title": "2026년 정보시스템 고도화 사업 (전략 테스트)",
+                "description": "투찰 전략 테스트용 공고",
+                "organization": "행정안전부",
+                "region": "서울",
+                "category": "정보화",
+                "bidType": "일반경쟁",
+                "contractMethod": "적격심사",
+                "budget": 500_000_000,
+                "estimatedPrice": 450_000_000,
+                "announcementDate": "2026-03-08",
+                "deadline": "2026-03-22T17:00:00+00:00",
+                "openDate": "2026-03-23T10:00:00+00:00",
+                "status": "open",
+                "scoringCriteria": {"technical": 80, "price": 20},
+                "attachments": [],
+                "crawledAt": "2026-03-08T06:00:00+00:00",
+                "createdAt": "2026-03-08T06:00:05+00:00",
+            }
+
+        if SAMPLE_BID_ID_LOWEST not in _SAMPLE_BIDS:
+            _SAMPLE_BIDS[SAMPLE_BID_ID_LOWEST] = {
+                "id": SAMPLE_BID_ID_LOWEST,
+                "bidNumber": "20260308003-00",
+                "title": "2026년 IT 장비 구매 (전략 테스트)",
+                "description": "최저가 투찰 전략 테스트용 공고",
+                "organization": "조달청",
+                "region": "서울",
+                "category": "정보화",
+                "bidType": "일반경쟁",
+                "contractMethod": "최저가",
+                "budget": 200_000_000,
+                "estimatedPrice": 200_000_000,
+                "announcementDate": "2026-03-08",
+                "deadline": "2026-03-22T17:00:00+00:00",
+                "openDate": "2026-03-23T10:00:00+00:00",
+                "status": "open",
+                "scoringCriteria": {},
+                "attachments": [],
+                "crawledAt": "2026-03-08T06:00:00+00:00",
+                "createdAt": "2026-03-08T06:00:05+00:00",
+            }
+    except (ImportError, Exception):
+        pass

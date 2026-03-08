@@ -11,10 +11,12 @@ import { bidsApi } from '@/lib/api/bids';
 import { HttpError } from '@/lib/api/client';
 import type { BidDetail } from '@/types/bid';
 import type { BidMatchResult } from '@/types/bid-match';
+import type { StrategyResult } from '@/types/strategy';
 import { BidStatusBadge } from '@/components/bids/BidStatusBadge';
 import { DeadlineBadge } from '@/components/bids/DeadlineBadge';
 import { RecommendationBadge } from '@/components/bids/RecommendationBadge';
 import { BidAttachmentList } from '@/components/bids/BidAttachmentList';
+import { StrategyPanel } from '@/components/bids/StrategyPanel';
 
 function formatBudget(budget?: number): string {
   if (!budget) return '-';
@@ -245,17 +247,21 @@ export default function BidDetailPage() {
 
   const [bid, setBid] = useState<BidDetail | null>(null);
   const [matchResult, setMatchResult] = useState<BidMatchResult | null>(null);
+  const [strategyData, setStrategyData] = useState<StrategyResult | null>(null);
   const [isLoadingBid, setIsLoadingBid] = useState(true);
   const [isLoadingMatch, setIsLoadingMatch] = useState(true);
+  const [isLoadingStrategy, setIsLoadingStrategy] = useState(true);
   const [hasCompanyProfile, setHasCompanyProfile] = useState(true);
   const [bidError, setBidError] = useState<string | null>(null);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bidId) return;
 
-    // 공고 상세 + 매칭 결과 병렬 호출
+    // 공고 상세 + 매칭 결과 + 전략 분석 병렬 호출
     setIsLoadingBid(true);
     setIsLoadingMatch(true);
+    setIsLoadingStrategy(true);
 
     bidsApi.getBid(bidId)
       .then((data) => {
@@ -287,6 +293,17 @@ export default function BidDetailPage() {
       })
       .finally(() => {
         setIsLoadingMatch(false);
+      });
+
+    bidsApi.getBidStrategy(bidId)
+      .then((data) => {
+        setStrategyData(data);
+      })
+      .catch(() => {
+        setStrategyError('전략 분석 정보를 불러올 수 없습니다.');
+      })
+      .finally(() => {
+        setIsLoadingStrategy(false);
       });
   }, [bidId]);
 
@@ -480,8 +497,16 @@ export default function BidDetailPage() {
           </div>
         </div>
 
-        {/* 우: 매칭 사이드바 (1/3) */}
+        {/* 우: 사이드바 (1/3) */}
         <div className="space-y-4">
+          {/* 투찰 전략 패널 */}
+          <StrategyPanel
+            bidId={bidId}
+            strategyData={strategyData}
+            isLoading={isLoadingStrategy}
+            error={strategyError}
+          />
+
           <MatchSection
             matchResult={matchResult}
             isLoadingMatch={isLoadingMatch}
