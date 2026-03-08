@@ -19,6 +19,7 @@ interface MemberState {
 interface MemberActions {
   fetchMembers: (companyId: string) => Promise<void>;
   inviteMember: (companyId: string, data: MemberInviteRequest) => Promise<void>;
+  removeMember: (companyId: string, memberId: string) => Promise<void>;
   openInviteModal: () => void;
   closeInviteModal: () => void;
   setRemovingId: (id: string | null) => void;
@@ -59,6 +60,20 @@ export const useMemberStore = create<MemberState & MemberActions>()((set) => ({
       }));
     } catch (err) {
       set({ isInviting: false });
+      throw err;
+    }
+  },
+
+  removeMember: async (companyId: string, memberId: string) => {
+    set({ removingMemberId: memberId });
+    try {
+      await companyApi.removeMember(companyId, memberId);
+      set((state) => ({
+        members: state.members.filter((m) => m.id !== memberId),
+        removingMemberId: null,
+      }));
+    } catch (err) {
+      set({ removingMemberId: null });
       throw err;
     }
   },

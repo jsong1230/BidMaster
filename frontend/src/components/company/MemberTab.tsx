@@ -137,9 +137,21 @@ export default function MemberTab({ companyId, currentUserRole, currentUserId }:
     fetchMembers,
     openInviteModal,
     closeInviteModal,
+    removeMember,
   } = useMemberStore();
 
   const canInvite = currentUserRole === 'owner' || currentUserRole === 'admin';
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (!window.confirm(`${memberName} 님을 팀에서 제거하시겠습니까?`)) return;
+    try {
+      await removeMember(companyId, memberId);
+      showToast(`${memberName} 님이 팀에서 제거되었습니다.`);
+    } catch (err: unknown) {
+      const httpErr = err as HttpError;
+      showToast(httpErr?.message ?? '멤버 제거에 실패했습니다.', 'error');
+    }
+  };
 
   useEffect(() => {
     fetchMembers(companyId);
@@ -233,6 +245,7 @@ export default function MemberTab({ companyId, currentUserRole, currentUserId }:
                         {canRemove && (
                           <button
                             type="button"
+                            onClick={() => handleRemoveMember(member.id, member.name)}
                             className="text-xs text-red-500 hover:text-red-600 font-medium"
                           >
                             제거

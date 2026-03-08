@@ -17,13 +17,13 @@ interface CertificationTabProps {
 
 const canManage = (role: MemberRole | null) => role === 'owner' || role === 'admin';
 
-const TODAY = new Date();
 const EXPIRY_SOON_DAYS = 30;
 
 function getDaysUntilExpiry(expiryDate?: string): number | null {
   if (!expiryDate) return null;
+  const today = new Date();
   const expiry = new Date(expiryDate);
-  const diff = Math.floor((expiry.getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.floor((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   return diff;
 }
 

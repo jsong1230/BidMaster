@@ -145,4 +145,8 @@ export const companyApi = {
     });
     return apiClient.getList<Member>(`/companies/${companyId}/members${query}`);
   },
+
+  removeMember: async (companyId: string, memberId: string): Promise<void> => {
+    await apiClient.delete(`/companies/${companyId}/members/${memberId}`);
+  },
 };
