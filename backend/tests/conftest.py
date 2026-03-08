@@ -882,6 +882,7 @@ class MockBid:
         bid_type=None,
         contract_method=None,
         budget=None,
+        estimated_price=None,
         announcement_date=None,
         deadline=None,
         open_date=None,
@@ -900,6 +901,7 @@ class MockBid:
         self.bid_type = bid_type or "일반경쟁"
         self.contract_method = contract_method or "적격심사"
         self.budget = budget or 500000000
+        self.estimated_price = estimated_price
         self.announcement_date = announcement_date or "2026-03-08"
         self.deadline = deadline or datetime(2026, 3, 22, 17, 0, 0, tzinfo=timezone.utc)
         self.open_date = open_date or datetime(2026, 3, 23, 10, 0, 0, tzinfo=timezone.utc)
@@ -1191,4 +1193,284 @@ def bid_error_codes():
         "BID_004": BID_004,
         "BID_005": BID_005,
         "BID_006": BID_006,
+    }
+
+
+# ============================================================
+# F-02 스코어링 / F-04 투찰 전략 관련 Mock 클래스 & Fixture
+# ============================================================
+
+class MockBidWinHistory:
+    """낙찰 이력 Mock"""
+    def __init__(
+        self,
+        id=None,
+        bid_number=None,
+        winner_name=None,
+        winner_business_number=None,
+        winning_price=None,
+        bid_rate=None,
+        winning_date=None,
+        organization=None,
+        category=None,
+        bid_type=None,
+        contract_method=None,
+    ):
+        self.id = id or str(uuid4())
+        self.bid_number = bid_number or "20260308001-00"
+        self.winner_name = winner_name or "(주)테스트업체"
+        self.winner_business_number = winner_business_number or "1234567890"
+        self.winning_price = winning_price or 420_000_000
+        self.bid_rate = bid_rate if bid_rate is not None else 0.8920
+        self.winning_date = winning_date or "2026-02-15"
+        self.created_at = datetime.now(timezone.utc)
+        # 인메모리 검색용 (DB 미저장)
+        self._organization = organization or "행정안전부"
+        self._category = category or "정보화"
+        self._bid_type = bid_type or "일반경쟁"
+        self._contract_method = contract_method or "적격심사"
+
+
+class MockScoringResult:
+    """스코어링 결과 Mock"""
+    def __init__(
+        self,
+        id=None,
+        bid_id=None,
+        user_id=None,
+        suitability_score=None,
+        competition_score=None,
+        capability_score=None,
+        market_score=None,
+        total_score=None,
+        recommendation=None,
+        recommendation_label=None,
+        recommendation_reason=None,
+        competitor_stats=None,
+        similar_bid_stats=None,
+        analyzed_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.bid_id = bid_id or str(uuid4())
+        self.user_id = user_id or str(uuid4())
+        self.suitability_score = suitability_score if suitability_score is not None else 75.0
+        self.competition_score = competition_score if competition_score is not None else 65.0
+        self.capability_score = capability_score if capability_score is not None else 70.0
+        self.market_score = market_score if market_score is not None else 68.0
+        self.total_score = total_score or (
+            self.suitability_score * 0.30
+            + self.competition_score * 0.25
+            + self.capability_score * 0.30
+            + self.market_score * 0.15
+        )
+        self.recommendation = recommendation or "recommended"
+        self.recommendation_label = recommendation_label or "추천"
+        self.recommendation_reason = recommendation_reason or "회사 역량과 공고 분야가 잘 일치합니다."
+        self.competitor_stats = competitor_stats or {
+            "estimatedCompetitors": 3,
+            "topCompetitors": [
+                {"name": "(주)가나다소프트", "winCount": 3},
+                {"name": "(주)라마바시스템", "winCount": 2},
+            ],
+        }
+        self.similar_bid_stats = similar_bid_stats or {
+            "totalCount": 5,
+            "avgWinRate": 0.8850,
+            "avgWinningPrice": 410_000_000,
+        }
+        self.analyzed_at = analyzed_at or datetime.now(timezone.utc)
+
+
+class MockStrategyResult:
+    """투찰 전략 분석 결과 Mock"""
+    def __init__(
+        self,
+        bid_id=None,
+        bid_title=None,
+        contract_method=None,
+        estimated_price=None,
+        budget=None,
+        win_rate_distribution=None,
+        recommended_ranges=None,
+        strategy_report=None,
+        analyzed_at=None,
+    ):
+        self.bid_id = bid_id or str(uuid4())
+        self.bid_title = bid_title or "2026년 정보시스템 고도화 사업"
+        self.contract_method = contract_method or "적격심사"
+        self.estimated_price = estimated_price or 450_000_000
+        self.budget = budget or 500_000_000
+        self.win_rate_distribution = win_rate_distribution or {
+            "mean": 0.8920,
+            "std": 0.0350,
+            "median": 0.8900,
+            "q25": 0.8650,
+            "q75": 0.9100,
+            "minRate": 0.8200,
+            "maxRate": 0.9500,
+            "sampleCount": 12,
+        }
+        self.recommended_ranges = recommended_ranges or {
+            "safe": {
+                "label": "낮은 리스크 (안전)",
+                "minPrice": int(self.estimated_price * 0.92),
+                "maxPrice": int(self.estimated_price * 0.95),
+                "minRate": 0.92,
+                "maxRate": 0.95,
+                "winProbability": 75,
+                "description": "안전한 구간으로 낙찰 가능성이 높습니다.",
+            },
+            "moderate": {
+                "label": "중간 리스크 (적정)",
+                "minPrice": int(self.estimated_price * 0.89),
+                "maxPrice": int(self.estimated_price * 0.92),
+                "minRate": 0.89,
+                "maxRate": 0.92,
+                "winProbability": 55,
+                "description": "적정 구간으로 수익과 낙찰 가능성의 균형입니다.",
+            },
+            "aggressive": {
+                "label": "높은 리스크 (공격적)",
+                "minPrice": int(self.estimated_price * 0.86),
+                "maxPrice": int(self.estimated_price * 0.89),
+                "minRate": 0.86,
+                "maxRate": 0.89,
+                "winProbability": 30,
+                "description": "공격적 구간으로 수익은 높지만 낙찰 가능성이 낮습니다.",
+            },
+        }
+        self.strategy_report = strategy_report or {
+            "contractMethodStrategy": "적격심사 방식으로 기술력과 가격의 종합 평가가 이루어집니다.",
+            "marketInsight": "유사 공고 12건 분석 결과 평균 낙찰가율 89.2%입니다.",
+            "riskFactors": ["경쟁 업체 수 5개사 추정 (보통 수준)"],
+            "recommendations": ["투찰가는 예정가격의 90~93% 구간을 권장합니다."],
+        }
+        self.analyzed_at = analyzed_at or datetime.now(timezone.utc)
+
+
+class MockSimulationResult:
+    """시뮬레이션 결과 Mock"""
+    def __init__(
+        self,
+        bid_id=None,
+        input_price=None,
+        bid_rate=None,
+        win_probability=None,
+        risk_level=None,
+        risk_label=None,
+        analysis=None,
+        comparison_with_recommended=None,
+    ):
+        self.bid_id = bid_id or str(uuid4())
+        self.input_price = input_price or 410_000_000
+        self.bid_rate = bid_rate or 0.9111
+        self.win_probability = win_probability or 68
+        self.risk_level = risk_level or "safe"
+        self.risk_label = risk_label or "낮은 리스크"
+        self.analysis = analysis or "입력 금액은 예정가격의 91.1%로 낙찰 가능성은 약 68%로 추정됩니다."
+        self.comparison_with_recommended = comparison_with_recommended or {
+            "safe": "추천 범위 내 (상한 근처)",
+            "moderate": "추천 범위 초과",
+            "aggressive": "추천 범위 초과",
+        }
+
+
+# 스코어링 / 전략 에러 코드 상수
+SCORING_001 = AppException("SCORING_001", "스코어링 분석 중 오류가 발생했습니다.", 500)
+SCORING_002 = AppException("SCORING_002", "스코어링 분석 시간이 초과되었습니다.", 504)
+STRATEGY_001 = AppException("STRATEGY_001", "투찰 전략 분석 중 오류가 발생했습니다.", 500)
+STRATEGY_002 = AppException("STRATEGY_002", "예정가격 정보가 없어 투찰가를 추천할 수 없습니다.", 422)
+
+
+@pytest.fixture
+def mock_bid_win_history():
+    """테스트용 낙찰 이력 Mock Fixture"""
+    return MockBidWinHistory(
+        id=str(uuid4()),
+        bid_number="20260201001-00",
+        winner_name="(주)가나다소프트",
+        winner_business_number="1234567890",
+        winning_price=420_000_000,
+        bid_rate=0.8920,
+        winning_date="2026-02-15",
+        organization="행정안전부",
+        category="정보화",
+        bid_type="일반경쟁",
+        contract_method="적격심사",
+    )
+
+
+@pytest.fixture
+def mock_scoring_result(mock_user, mock_bid):
+    """테스트용 스코어링 결과 Mock Fixture"""
+    return MockScoringResult(
+        bid_id=mock_bid.id,
+        user_id=mock_user.id,
+        suitability_score=82.5,
+        competition_score=65.0,
+        capability_score=78.0,
+        market_score=70.0,
+        recommendation="recommended",
+        recommendation_label="추천",
+        recommendation_reason="회사 역량과 공고 분야가 잘 일치하며, 경쟁 강도가 보통 수준입니다.",
+    )
+
+
+@pytest.fixture
+def mock_strongly_recommended_result(mock_user, mock_bid):
+    """테스트용 강력추천 스코어링 결과 Mock Fixture"""
+    return MockScoringResult(
+        bid_id=mock_bid.id,
+        user_id=mock_user.id,
+        suitability_score=90.0,
+        competition_score=85.0,
+        capability_score=88.0,
+        market_score=82.0,
+        total_score=87.05,
+        recommendation="strongly_recommended",
+        recommendation_label="강력추천",
+        recommendation_reason="높은 낙찰 가능성이 예측됩니다. 적극적인 참여를 권장합니다.",
+    )
+
+
+@pytest.fixture
+def mock_strategy_result(mock_bid):
+    """테스트용 투찰 전략 결과 Mock Fixture"""
+    return MockStrategyResult(
+        bid_id=mock_bid.id,
+        bid_title=mock_bid.title,
+        contract_method=mock_bid.contract_method,
+        estimated_price=450_000_000,
+        budget=mock_bid.budget,
+    )
+
+
+@pytest.fixture
+def mock_simulation_result(mock_bid):
+    """테스트용 시뮬레이션 결과 Mock Fixture"""
+    return MockSimulationResult(
+        bid_id=mock_bid.id,
+        input_price=410_000_000,
+        bid_rate=410_000_000 / 450_000_000,
+        win_probability=68,
+        risk_level="safe",
+        risk_label="낮은 리스크",
+    )
+
+
+@pytest.fixture
+def scoring_error_codes():
+    """스코어링 에러 코드들"""
+    return {
+        "SCORING_001": SCORING_001,
+        "SCORING_002": SCORING_002,
+    }
+
+
+@pytest.fixture
+def strategy_error_codes():
+    """전략 에러 코드들"""
+    return {
+        "STRATEGY_001": STRATEGY_001,
+        "STRATEGY_002": STRATEGY_002,
     }
