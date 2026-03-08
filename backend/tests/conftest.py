@@ -482,3 +482,297 @@ def mock_token_repository():
     repo.create = AsyncMock()
     repo.revoke = AsyncMock()
     return repo
+
+
+# ============================================================
+# F-08 회사 프로필 관련 Mock 클래스 & Fixture
+# ============================================================
+
+class MockCompany:
+    """회사 Mock"""
+    def __init__(
+        self,
+        id=None,
+        business_number=None,
+        name=None,
+        ceo_name=None,
+        address=None,
+        phone=None,
+        industry=None,
+        scale=None,
+        description=None,
+        deleted_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.business_number = business_number or "1234567890"
+        self.name = name or "테스트 주식회사"
+        self.ceo_name = ceo_name or "홍길동"
+        self.address = address or "서울특별시 강남구"
+        self.phone = phone or "02-1234-5678"
+        self.industry = industry or "IT서비스"
+        self.scale = scale or "small"
+        self.description = description or "테스트 회사입니다"
+        self.deleted_at = deleted_at
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class MockCompanyMember:
+    """회사 멤버 Mock"""
+    def __init__(
+        self,
+        id=None,
+        company_id=None,
+        user_id=None,
+        role=None,
+        invited_at=None,
+        joined_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.company_id = company_id or str(uuid4())
+        self.user_id = user_id or str(uuid4())
+        self.role = role or "member"
+        self.invited_at = invited_at or datetime.now(timezone.utc)
+        self.joined_at = joined_at or datetime.now(timezone.utc)
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class MockPerformance:
+    """수행 실적 Mock"""
+    def __init__(
+        self,
+        id=None,
+        company_id=None,
+        project_name=None,
+        client_name=None,
+        client_type=None,
+        contract_amount=None,
+        start_date=None,
+        end_date=None,
+        status=None,
+        description=None,
+        is_representative=False,
+        document_url=None,
+        deleted_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.company_id = company_id or str(uuid4())
+        self.project_name = project_name or "공공 SI 프로젝트"
+        self.client_name = client_name or "한국정보화진흥원"
+        self.client_type = client_type or "public"
+        self.contract_amount = contract_amount or 500000000
+        self.start_date = start_date or "2024-01-01"
+        self.end_date = end_date or "2024-12-31"
+        self.status = status or "completed"
+        self.description = description or "전자정부 시스템 구축"
+        self.is_representative = is_representative
+        self.document_url = document_url
+        self.deleted_at = deleted_at
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class MockCertification:
+    """보유 인증 Mock"""
+    def __init__(
+        self,
+        id=None,
+        company_id=None,
+        name=None,
+        issuer=None,
+        cert_number=None,
+        issued_date=None,
+        expiry_date=None,
+        document_url=None,
+        deleted_at=None,
+    ):
+        self.id = id or str(uuid4())
+        self.company_id = company_id or str(uuid4())
+        self.name = name or "GS인증 1등급"
+        self.issuer = issuer or "한국정보통신기술협회"
+        self.cert_number = cert_number or "GS-2024-0001"
+        self.issued_date = issued_date or "2024-01-15"
+        self.expiry_date = expiry_date or "2027-01-14"
+        self.document_url = document_url
+        self.deleted_at = deleted_at
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+@pytest.fixture
+def test_company_data():
+    """테스트용 회사 데이터 Fixture"""
+    return {
+        "businessNumber": "1234567890",
+        "name": "테스트 주식회사",
+        "ceoName": "홍길동",
+        "address": "서울특별시 강남구",
+        "phone": "02-1234-5678",
+        "industry": "IT서비스",
+        "scale": "small",
+        "description": "테스트 회사입니다",
+    }
+
+
+@pytest.fixture
+def test_performance_data():
+    """테스트용 수행 실적 데이터 Fixture"""
+    return {
+        "projectName": "공공 SI 프로젝트",
+        "clientName": "한국정보화진흥원",
+        "clientType": "public",
+        "contractAmount": 500000000,
+        "startDate": "2024-01-01",
+        "endDate": "2024-12-31",
+        "status": "completed",
+        "description": "전자정부 시스템 구축",
+        "isRepresentative": False,
+    }
+
+
+@pytest.fixture
+def test_certification_data():
+    """테스트용 보유 인증 데이터 Fixture"""
+    return {
+        "name": "GS인증 1등급",
+        "issuer": "한국정보통신기술협회",
+        "certNumber": "GS-2024-0001",
+        "issuedDate": "2024-01-15",
+        "expiryDate": "2027-01-14",
+    }
+
+
+@pytest.fixture
+def mock_company():
+    """테스트용 회사 Mock Fixture"""
+    return MockCompany(
+        id=str(uuid4()),
+        business_number="1234567890",
+        name="테스트 주식회사",
+        ceo_name="홍길동",
+        address="서울특별시 강남구",
+        scale="small",
+    )
+
+
+@pytest.fixture
+def mock_deleted_company():
+    """테스트용 삭제된 회사 Mock Fixture"""
+    company = MockCompany(
+        id=str(uuid4()),
+        business_number="9876543210",
+        name="삭제된 주식회사",
+    )
+    company.deleted_at = datetime.now(timezone.utc)
+    return company
+
+
+@pytest.fixture
+def mock_company_member_owner(mock_company, mock_user):
+    """테스트용 owner 역할 멤버 Mock Fixture"""
+    return MockCompanyMember(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        user_id=mock_user.id,
+        role="owner",
+    )
+
+
+@pytest.fixture
+def mock_company_member_admin(mock_company):
+    """테스트용 admin 역할 멤버 Mock Fixture"""
+    return MockCompanyMember(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        user_id=str(uuid4()),
+        role="admin",
+    )
+
+
+@pytest.fixture
+def mock_company_member_member(mock_company):
+    """테스트용 member 역할 멤버 Mock Fixture"""
+    return MockCompanyMember(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        user_id=str(uuid4()),
+        role="member",
+    )
+
+
+@pytest.fixture
+def mock_performance(mock_company):
+    """테스트용 수행 실적 Mock Fixture"""
+    return MockPerformance(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        project_name="공공 SI 프로젝트",
+        client_name="한국정보화진흥원",
+        contract_amount=500000000,
+    )
+
+
+@pytest.fixture
+def mock_representative_performance(mock_company):
+    """테스트용 대표 실적 Mock Fixture"""
+    return MockPerformance(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        project_name="대표 실적 프로젝트",
+        is_representative=True,
+    )
+
+
+@pytest.fixture
+def mock_certification(mock_company):
+    """테스트용 보유 인증 Mock Fixture"""
+    return MockCertification(
+        id=str(uuid4()),
+        company_id=mock_company.id,
+        name="GS인증 1등급",
+        issuer="한국정보통신기술협회",
+    )
+
+
+# 회사 관련 에러 코드 상수
+class AppException(Exception):
+    """애플리케이션 예외"""
+    def __init__(self, code: str, message: str, status_code: int = 400):
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+COMPANY_001 = AppException("COMPANY_001", "회사를 찾을 수 없습니다.", 404)
+COMPANY_002 = AppException("COMPANY_002", "이미 등록된 사업자등록번호입니다.", 409)
+COMPANY_003 = AppException("COMPANY_003", "사업자등록번호 검증 실패", 400)
+COMPANY_004 = AppException("COMPANY_004", "회사 프로필이 이미 존재합니다.", 409)
+COMPANY_005 = AppException("COMPANY_005", "대표 실적은 최대 5개까지 지정할 수 있습니다.", 400)
+COMPANY_006 = AppException("COMPANY_006", "수행 실적을 찾을 수 없습니다.", 404)
+COMPANY_007 = AppException("COMPANY_007", "인증 정보를 찾을 수 없습니다.", 404)
+COMPANY_008 = AppException("COMPANY_008", "초대 대상 사용자를 찾을 수 없습니다.", 404)
+COMPANY_009 = AppException("COMPANY_009", "이미 해당 회사의 멤버입니다.", 409)
+COMPANY_010 = AppException("COMPANY_010", "대상 사용자가 이미 다른 회사에 소속되어 있습니다.", 409)
+PERMISSION_001 = AppException("PERMISSION_001", "접근 권한이 없습니다.", 403)
+PERMISSION_003 = AppException("PERMISSION_003", "팀원 초대 권한이 없습니다.", 403)
+
+
+@pytest.fixture
+def company_error_codes():
+    """회사 관련 에러 코드들"""
+    return {
+        "COMPANY_001": COMPANY_001,
+        "COMPANY_002": COMPANY_002,
+        "COMPANY_003": COMPANY_003,
+        "COMPANY_004": COMPANY_004,
+        "COMPANY_005": COMPANY_005,
+        "COMPANY_006": COMPANY_006,
+        "COMPANY_007": COMPANY_007,
+        "COMPANY_008": COMPANY_008,
+        "COMPANY_009": COMPANY_009,
+        "COMPANY_010": COMPANY_010,
+        "PERMISSION_001": PERMISSION_001,
+        "PERMISSION_003": PERMISSION_003,
+    }
