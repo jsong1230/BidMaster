@@ -21,27 +21,8 @@ VALID_SORT_ORDER = {"asc", "desc"}
 VALID_RECOMMENDATION = {"recommended", "neutral", "not_recommended"}
 
 # ----------------------------------------------------------------
-# 테스트용 Mock 데이터 (인메모리 스토어)
+# 인메모리 스토어 (공고 / 매칭 결과)
 # ----------------------------------------------------------------
-
-# 테스트 토큰 -> 사용자 정보 매핑
-_TEST_TOKENS: dict[str, dict[str, Any]] = {
-    "test-token-owner": {
-        "sub": "user-owner-001",
-        "role": "owner",
-        "company_id": "company-001",
-    },
-    "test-token-member": {
-        "sub": "user-member-001",
-        "role": "member",
-        "company_id": "company-001",
-    },
-    "test-token-no-company": {
-        "sub": "user-nocompany-001",
-        "role": "member",
-        "company_id": None,
-    },
-}
 
 # 샘플 공고 데이터 (통합 테스트용)
 _SAMPLE_BIDS: dict[str, dict[str, Any]] = {}
@@ -116,10 +97,12 @@ _init_sample_data()
 
 def _get_current_user(request: Request) -> dict[str, Any]:
     """
-    인증 토큰 검증 후 사용자 정보 반환
+    JWT 토큰 검증 후 사용자 정보 반환
 
     Raises:
         AuthError: AUTH_002(401) - 인증 토큰 없음
+        AuthError: AUTH_003(401) - 토큰 만료
+        AuthError: AUTH_004(401) - 유효하지 않은 토큰
     """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -127,16 +110,9 @@ def _get_current_user(request: Request) -> dict[str, Any]:
 
     token = auth_header[len("Bearer "):]
 
-    # 테스트 토큰 처리
-    if token in _TEST_TOKENS:
-        return _TEST_TOKENS[token]
-
-    # 실제 JWT 디코딩
-    try:
-        payload = decode_token(token)
-        return payload
-    except AuthError:
-        raise
+    # JWT 디코딩 (F-07 security.py와 동일 패턴)
+    payload = decode_token(token)
+    return payload
 
 
 def error_response(code: str, message: str, status_code: int) -> JSONResponse:
@@ -209,8 +185,14 @@ async def list_bids(request: Request) -> JSONResponse:
 
     min_budget_str = params.get("minBudget")
     max_budget_str = params.get("maxBudget")
-    min_budget: Decimal | None = Decimal(min_budget_str) if min_budget_str else None
-    max_budget: Decimal | None = Decimal(max_budget_str) if max_budget_str else None
+    try:
+        min_budget: Decimal | None = Decimal(min_budget_str) if min_budget_str else None
+    except (ValueError, Exception):
+        min_budget = None
+    try:
+        max_budget: Decimal | None = Decimal(max_budget_str) if max_budget_str else None
+    except (ValueError, Exception):
+        max_budget = None
 
     # 인메모리 필터링
     items = list(_SAMPLE_BIDS.values())

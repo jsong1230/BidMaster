@@ -106,24 +106,44 @@ class BidCollectorService:
         2. 중복 공고 필터링 (bid_number 기준)
         3. 신규 공고 저장
         4. 첨부파일 정보 저장
+
+        AC-05: API 호출은 _retry_with_backoff()로 감싸 3회 실패 시 send_admin_alert() 호출
         """
         result = CollectionResult()
         page = 1
         total_count: int | None = None
 
         while True:
-            try:
-                # API 호출
+            current_page = page
+
+            async def _fetch_page() -> dict[str, Any]:
+                """현재 페이지 API 호출 (재시도 래퍼용 클로저)"""
                 response = await self.http_client.get(
                     f"{self._base_url}/{NARA_API_ENDPOINT}",
                     params={
                         "ServiceKey": self._api_key,
                         "numOfRows": self._page_size,
-                        "pageNo": page,
+                        "pageNo": current_page,
                         "type": "json",
                     },
                 )
-                data = response.json()
+                return response.json()
+
+            try:
+                # API 호출 — _retry_with_backoff()로 감싸 3회 재시도 (AC-05)
+                try:
+                    data = await self._retry_with_backoff(
+                        _fetch_page,
+                        max_retries=self._max_retries,
+                        base_delay=self._base_delay,
+                    )
+                except CollectionError as ce:
+                    # 3회 모두 실패: 관리자 알림 발송 (AC-05)
+                    await self._send_admin_alert(str(ce))
+                    result.failed_count += 1
+                    result.errors.append(str(ce))
+                    break
+
                 body = data.get("response", {}).get("body", {})
                 items: list[dict[str, Any]] = body.get("items", [])
 
@@ -167,6 +187,14 @@ class BidCollectorService:
                 break
 
         return result
+
+    async def _send_admin_alert(self, message: str) -> None:
+        """
+        관리자 알림 발송 스텁 (AC-05)
+
+        실제 운영 환경에서는 슬랙/이메일 연동으로 교체 가능
+        """
+        logger.error(f"[관리자 알림] 공고 수집 실패: {message}")
 
     async def _fetch_from_api(self, page: int = 1, num_of_rows: int = 100) -> list[dict[str, Any]]:
         """

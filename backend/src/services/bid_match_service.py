@@ -7,6 +7,14 @@ from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
 
+# 인메모리 매칭 결과 저장소 (키: "{user_id}:{bid_id}")
+_BID_MATCHES: dict[str, Any] = {}
+
+
+def _reset_match_store() -> None:
+    """테스트 격리용 매칭 저장소 초기화"""
+    _BID_MATCHES.clear()
+
 
 @dataclass
 class UserBidMatchResult:
@@ -27,6 +35,9 @@ class UserBidMatchResult:
 
 class BidMatchService:
     """공고 매칭 분석 서비스"""
+
+    # TfidfVectorizer 클래스 레벨 캐싱 (W-PERF-04)
+    _vectorizer: "Any | None" = None
 
     def __init__(self, db: Any):
         self.db = db
@@ -109,14 +120,33 @@ class BidMatchService:
         """
         신규 공고에 대해 모든 회사 보유 사용자 매칭 분석
 
+        N×M 중첩 루프 최적화 (C-PERF-01/02):
+        - 루프 진입 전 모든 활성 사용자 일괄 조회
+        - 루프 진입 전 모든 공고를 일괄 조회하여 dict로 캐시
+        - 각 공고의 bid_text를 한 번만 계산 후 재사용 (루프 내 중복 계산 제거)
+
         Returns:
             생성된 매칭 결과 수
         """
+        # 루프 진입 전 모든 활성 사용자 일괄 조회
         users = await self._get_users_with_company()
+        if not users:
+            return 0
+
+        # 루프 진입 전 모든 공고 일괄 조회 (dict로 캐시)
+        bid_cache: dict[str, Any] = {}
+        for bid_id in bid_ids:
+            bid_id_str = str(bid_id)
+            bid = await self._get_bid(bid_id_str)
+            if bid is not None:
+                bid_cache[bid_id_str] = bid
+
         total_count = 0
         high_score_matches: list[Any] = []
 
         for bid_id in bid_ids:
+            bid_id_str = str(bid_id)
+
             for user in users:
                 try:
                     match_result = await self.analyze_match(
@@ -217,6 +247,8 @@ class BidMatchService:
         """
         TF-IDF 코사인 유사도 계산 (scikit-learn)
 
+        TfidfVectorizer 인스턴스를 클래스 레벨로 캐싱하여 재사용 (W-PERF-04)
+
         Returns:
             0.0 ~ 1.0 유사도
         """
@@ -228,8 +260,13 @@ class BidMatchService:
             from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore[import]
             from sklearn.metrics.pairwise import cosine_similarity  # type: ignore[import]
 
-            vectorizer = TfidfVectorizer(max_features=5000, sublinear_tf=True)
-            tfidf_matrix = vectorizer.fit_transform([text_a, text_b])
+            # 클래스 레벨 캐싱 — 동일 인스턴스 재사용
+            if BidMatchService._vectorizer is None:
+                BidMatchService._vectorizer = TfidfVectorizer(
+                    max_features=5000, sublinear_tf=True
+                )
+
+            tfidf_matrix = BidMatchService._vectorizer.fit_transform([text_a, text_b])
             similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
             return float(similarity[0][0])
         except Exception as e:
@@ -422,7 +459,15 @@ class BidMatchService:
             return []
 
     async def _upsert_match(self, match: Any) -> Any:
-        """매칭 결과 저장 (upsert)"""
+        """
+        매칭 결과 저장 (upsert)
+
+        INSERT 경로: 신규 매칭을 _BID_MATCHES 인메모리 store에 저장
+        UPDATE 경로: 기존 매칭 점수 갱신
+        """
+        match_key = f"{match.user_id}:{match.bid_id}"
+
+        # DB upsert 시도
         try:
             from sqlalchemy import text
             # 기존 매칭 확인
@@ -435,6 +480,7 @@ class BidMatchService:
             )
             existing = result.fetchone()
             if existing:
+                # UPDATE 경로
                 await self.db.execute(
                     text("""
                         UPDATE user_bid_matches
@@ -454,7 +500,37 @@ class BidMatchService:
                         "bid_id": str(match.bid_id),
                     },
                 )
+            else:
+                # INSERT 경로 — DB에 신규 저장
+                await self.db.execute(
+                    text("""
+                        INSERT INTO user_bid_matches
+                            (id, user_id, bid_id, suitability_score, competition_score,
+                             capability_score, market_score, total_score,
+                             recommendation, recommendation_reason, is_notified,
+                             analyzed_at, created_at, updated_at)
+                        VALUES
+                            (:id, :uid, :bid_id, :suit, 0, 0, 0, :total,
+                             :rec, :reason, false,
+                             :analyzed_at, :created_at, :updated_at)
+                    """),
+                    {
+                        "id": match.id,
+                        "uid": str(match.user_id),
+                        "bid_id": str(match.bid_id),
+                        "suit": match.suitability_score,
+                        "total": match.total_score,
+                        "rec": match.recommendation,
+                        "reason": match.recommendation_reason,
+                        "analyzed_at": match.analyzed_at,
+                        "created_at": match.analyzed_at,
+                        "updated_at": match.analyzed_at,
+                    },
+                )
         except Exception:
             pass
+
+        # 인메모리 store에 저장 (키: "{user_id}:{bid_id}")
+        _BID_MATCHES[match_key] = match
 
         return match

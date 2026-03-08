@@ -15,9 +15,11 @@ async def scheduled_collect_bids() -> None:
     스케줄러에서 호출하는 공고 수집 함수
 
     실행 순서:
-    1. 공고 수집 (BidCollectorService)
-    2. 첨부파일 파싱 (BidParserService)
-    3. 매칭 분석 (BidMatchService)
+    1. Redis 잠금 획득 — 이미 수집 중이면 스킵
+    2. 공고 수집 (BidCollectorService)
+    3. 첨부파일 파싱 (BidParserService)
+    4. 매칭 분석 (BidMatchService)
+    5. Redis 잠금 해제
     """
     from src.core.database import AsyncSessionLocal
     from src.services.bid_collector_service import BidCollectorService
@@ -25,6 +27,20 @@ async def scheduled_collect_bids() -> None:
     from src.services.bid_match_service import BidMatchService
 
     logger.info("[스케줄러] 공고 자동 수집 시작")
+
+    # Redis 클라이언트 획득 시도
+    redis: "Any | None" = None
+    try:
+        from src.core.redis import get_redis
+        redis = await get_redis()
+    except Exception as e:
+        logger.warning(f"[스케줄러] Redis 연결 실패, 잠금 없이 진행: {e}")
+
+    # 잠금 획득 — 이미 수집 중이면 스킵
+    lock_acquired = await acquire_collection_lock(redis)
+    if not lock_acquired:
+        logger.info("[스케줄러] 공고 수집이 이미 진행 중입니다. 스킵합니다.")
+        return
 
     try:
         async with AsyncSessionLocal() as db:
@@ -56,6 +72,9 @@ async def scheduled_collect_bids() -> None:
 
     except Exception as e:
         logger.error(f"[스케줄러] 공고 수집 오류: {e}")
+    finally:
+        # 잠금 해제 (성공/실패 무관하게 반드시 해제)
+        await release_collection_lock(redis)
 
 
 async def acquire_collection_lock(redis: "Any") -> bool:

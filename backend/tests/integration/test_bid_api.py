@@ -82,8 +82,25 @@ class BidsMockApp(MockApp):
 
 bids_app = BidsMockApp()
 
-SAMPLE_TOKEN = "Bearer test-token-owner"
-MEMBER_TOKEN = "Bearer test-token-member"
+# 실제 JWT 토큰 생성 (테스트용 하드코딩 토큰 대신 JWT 사용)
+from src.core.security import create_access_token
+
+_owner_jwt = create_access_token(
+    subject="user-owner-001",
+    extra_data={"role": "owner", "company_id": "company-001"},
+)
+_member_jwt = create_access_token(
+    subject="user-member-001",
+    extra_data={"role": "member", "company_id": "company-001"},
+)
+_no_company_jwt = create_access_token(
+    subject="user-nocompany-001",
+    extra_data={"role": "member", "company_id": None},
+)
+
+SAMPLE_TOKEN = f"Bearer {_owner_jwt}"
+MEMBER_TOKEN = f"Bearer {_member_jwt}"
+NO_COMPANY_TOKEN = f"Bearer {_no_company_jwt}"
 # API 초기화 샘플 데이터의 고정 bid_id (bids.py _init_sample_data 참조)
 SAMPLE_BID_ID = "550e8400-e29b-41d4-a716-446655440000"
 
@@ -446,7 +463,7 @@ class TestGetBidMatches:
         # Act — company 없는 사용자 토큰으로 요청
         response = await bids_client.get(
             f"/api/v1/bids/{SAMPLE_BID_ID}/matches",
-            headers={"Authorization": "Bearer test-token-no-company"}
+            headers={"Authorization": NO_COMPANY_TOKEN}
         )
 
         # Assert
@@ -555,7 +572,7 @@ class TestGetMatchedBids:
         # Act
         response = await bids_client.get(
             "/api/v1/bids/matched",
-            headers={"Authorization": "Bearer test-token-no-company"}
+            headers={"Authorization": NO_COMPANY_TOKEN}
         )
 
         # Assert
