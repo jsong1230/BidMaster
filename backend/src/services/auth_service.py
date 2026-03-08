@@ -75,8 +75,8 @@ class AuthService:
 
     async def login(self, data: LoginRequest) -> LoginResponse:
         """로그인"""
-        # 사용자 조회
-        user = await self._get_user_by_email(data.email)
+        # 사용자 조회 (탈퇴 사용자 포함하여 조회 후 탈퇴 여부 별도 체크)
+        user = await self._get_user_by_email(data.email, include_deleted=True)
         if not user:
             raise AuthError("AUTH_001", "이메일 또는 비밀번호가 올바르지 않습니다.", 401)
 
@@ -103,7 +103,15 @@ class AuthService:
 
     async def refresh_token(self, refresh_token: str) -> TokenResponse:
         """토큰 갱신"""
-        # 토큰 디코딩
+        # 먼저 토큰 해시로 DB 조회 (revoke 여부 우선 확인)
+        token_hash = self._hash_token(refresh_token)
+        stored_token = await self._get_refresh_token_by_hash(token_hash)
+
+        if stored_token and stored_token.is_revoked:
+            # 명시적으로 폐기된 토큰 (로그아웃 또는 보안상 폐기)
+            raise AuthError("AUTH_005", "로그아웃된 토큰입니다.", 401)
+
+        # 토큰 디코딩 (만료 여부 확인)
         try:
             payload = decode_token(refresh_token)
         except AuthError:
@@ -115,15 +123,8 @@ class AuthService:
         if not user_id or not jti:
             raise AuthError("AUTH_006", "리프레시 토큰이 유효하지 않습니다.", 401)
 
-        # 토큰 해시로 DB 조회
-        token_hash = self._hash_token(refresh_token)
-        stored_token = await self._get_refresh_token_by_hash(token_hash)
-
         if not stored_token:
             raise AuthError("AUTH_006", "리프레시 토큰이 유효하지 않습니다.", 401)
-
-        if stored_token.is_revoked:
-            raise AuthError("AUTH_005", "로그아웃된 토큰입니다.", 401)
 
         if stored_token.is_expired():
             raise AuthError("AUTH_006", "리프레시 토큰이 유효하지 않습니다.", 401)
@@ -143,9 +144,9 @@ class AuthService:
 
         return tokens
 
-    async def logout(self, user_id: UUID, refresh_token: str) -> None:
+    async def logout(self, user_id: Optional[UUID], refresh_token: str) -> None:
         """로그아웃"""
-        # 토큰 해시로 DB 조회
+        # 토큰 해시로 DB 조회 (user_id는 사용 안 함, 멱등성 보장)
         token_hash = self._hash_token(refresh_token)
         stored_token = await self._get_refresh_token_by_hash(token_hash)
 
@@ -297,11 +298,12 @@ class AuthService:
 
     # === 내부 메서드 ===
 
-    async def _get_user_by_email(self, email: str) -> Optional[User]:
+    async def _get_user_by_email(self, email: str, include_deleted: bool = False) -> Optional[User]:
         """이메일로 사용자 조회"""
-        result = await self.db.execute(
-            select(User).where(and_(User.email == email, User.deleted_at.is_(None)))
-        )
+        conditions = [User.email == email]
+        if not include_deleted:
+            conditions.append(User.deleted_at.is_(None))
+        result = await self.db.execute(select(User).where(and_(*conditions)))
         return result.scalar_one_or_none()
 
     async def _get_user_by_id(self, user_id: UUID) -> Optional[User]:

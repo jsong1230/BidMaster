@@ -481,9 +481,8 @@ async def get_bid_strategy(bid_id: str, request: Request) -> JSONResponse:
 
     try:
         from src.services.bidding_strategy_service import BiddingStrategyService
-        from unittest.mock import AsyncMock
 
-        service = BiddingStrategyService(db=AsyncMock())
+        service = BiddingStrategyService(db=None)
         result = await service.analyze_strategy(bid_id)
         return success_response(data=result.model_dump())
     except AppException as e:
@@ -541,9 +540,8 @@ async def simulate_bid_strategy(bid_id: str, request: Request) -> JSONResponse:
 
     try:
         from src.services.bidding_strategy_service import BiddingStrategyService
-        from unittest.mock import AsyncMock
 
-        service = BiddingStrategyService(db=AsyncMock())
+        service = BiddingStrategyService(db=None)
         result = await service.simulate(bid_id, bid_price)
         return success_response(data=result.model_dump())
     except AppException as e:

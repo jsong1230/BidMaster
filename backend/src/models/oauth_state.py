@@ -23,5 +23,8 @@ class OAuthState(Base):
         return f"<OAuthState {self.state}>"
 
     def is_expired(self) -> bool:
-        """만료 여부 확인"""
-        return datetime.now(timezone.utc) > self.expires_at
+        """만료 여부 확인 (SQLite naive datetime 호환)"""
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > expires

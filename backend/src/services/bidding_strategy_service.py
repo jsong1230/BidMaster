@@ -150,10 +150,11 @@ class BiddingStrategyService:
     """투찰 전략 분석 서비스"""
 
     # 적격심사 기본 구간 (예정가격 대비 비율)
+    # 인수조건: 예산 88~95% 구간 추천
     QUALIFICATION_RANGES = {
         "safe": (0.92, 0.95),
-        "moderate": (0.89, 0.92),
-        "aggressive": (0.86, 0.89),
+        "moderate": (0.90, 0.92),
+        "aggressive": (0.88, 0.90),
     }
 
     # 최저가 통계 기반 시그마 계수

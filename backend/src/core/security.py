@@ -100,6 +100,7 @@ def create_access_token(
         "sub": str(subject),
         "exp": expire,
         "iat": now,
+        "jti": str(uuid.uuid4()),  # 토큰 고유 ID (동일 초에 생성된 토큰도 구분)
     }
 
     if extra_data:

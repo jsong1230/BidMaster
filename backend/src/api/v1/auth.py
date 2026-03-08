@@ -4,6 +4,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,14 +53,16 @@ async def get_current_user(
         payload = decode_token(credentials.credentials)
         user_id = UUID(payload.get("sub"))
     except AuthError as e:
+        # AUTH_004(유효하지 않은 토큰)와 AUTH_003(만료) 모두 AUTH_003으로 통일
+        # (클라이언트는 어느 경우든 재로그인이 필요하므로 동일하게 처리)
         raise HTTPException(
-            status_code=e.status_code,
-            detail={"success": False, "error": {"code": e.code, "message": e.message}},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"success": False, "error": {"code": "AUTH_003", "message": "토큰이 만료되었거나 유효하지 않습니다."}},
         )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"success": False, "error": {"code": "AUTH_004", "message": "유효하지 않은 토큰입니다."}},
+            detail={"success": False, "error": {"code": "AUTH_003", "message": "토큰이 만료되었거나 유효하지 않습니다."}},
         )
 
     auth_service = AuthService(db)
@@ -109,7 +112,7 @@ async def register(
     try:
         auth_service = AuthService(db)
         result = await auth_service.register(request)
-        return success_response(result.model_dump(), status.HTTP_201_CREATED)
+        return success_response(result.model_dump(by_alias=True), status.HTTP_201_CREATED)
     except (AuthError, ValidationError) as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
 
@@ -123,7 +126,7 @@ async def login(
     try:
         auth_service = AuthService(db)
         result = await auth_service.login(request)
-        return success_response(result.model_dump())
+        return success_response(result.model_dump(by_alias=True))
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
 
@@ -137,7 +140,7 @@ async def refresh_token(
     try:
         auth_service = AuthService(db)
         result = await auth_service.refresh_token(request.refresh_token)
-        return success_response(result.model_dump())
+        return success_response(result.model_dump(by_alias=True))
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
 
@@ -145,23 +148,30 @@ async def refresh_token(
 @router.post("/logout", response_model=None)
 async def logout(
     request: LogoutRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ):
-    """로그아웃"""
+    """로그아웃 — 인증 토큰은 선택적 (멱등성 보장)"""
+    auth_service = AuthService(db)
     try:
-        auth_service = AuthService(db)
-        await auth_service.logout(current_user.id, request.refresh_token)
-        return success_response(None)
-    except AuthError as e:
-        # 로그아웃은 멱등성 보장 (에러도 성공 처리)
-        return success_response(None)
+        # 인증 토큰이 있으면 user_id 추출, 없으면 None
+        user_id = None
+        if credentials:
+            try:
+                payload = decode_token(credentials.credentials)
+                user_id = UUID(payload.get("sub"))
+            except Exception:
+                pass
+        await auth_service.logout(user_id, request.refresh_token)
+    except Exception:
+        pass
+    return success_response(None)
 
 
 @router.get("/me", response_model=None)
 async def get_me(current_user: UserResponse = Depends(get_current_user)):
     """현재 사용자 조회"""
-    return success_response(current_user.model_dump())
+    return success_response(current_user.model_dump(by_alias=True))
 
 
 @router.patch("/me", response_model=None)
@@ -174,7 +184,7 @@ async def update_me(
     try:
         auth_service = AuthService(db)
         result = await auth_service.update_user(current_user.id, request)
-        return success_response(result.model_dump())
+        return success_response(result.model_dump(by_alias=True))
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
 
@@ -250,7 +260,7 @@ async def kakao_oauth_start(
         result = await oauth_service.get_oauth_url(OAuthService.PROVIDER_KAKAO, redirect_url)
         # 302 Redirect
         from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=result.authorization_url)
+        return RedirectResponse(url=result.authorization_url, status_code=302)
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
 
@@ -267,6 +277,6 @@ async def kakao_oauth_callback(
         result = await oauth_service.handle_callback(
             OAuthService.PROVIDER_KAKAO, code, state
         )
-        return success_response(result.model_dump())
+        return success_response(result.model_dump(by_alias=True))
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=error_response(e))
