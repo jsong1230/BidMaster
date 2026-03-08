@@ -21,6 +21,28 @@ const navItems: NavItem[] = [
   },
 ];
 
+/** 공고 섹션 메뉴 항목 */
+const bidItems: NavItem[] = [
+  {
+    href: '/bids',
+    label: '공고 목록',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    ),
+  },
+  {
+    href: '/bids/matched',
+    label: '매칭 공고',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+      </svg>
+    ),
+  },
+];
+
 const settingsItems: NavItem[] = [
   {
     href: '/settings/company',
@@ -54,7 +76,7 @@ function NavLink({ item }: { item: NavItem }) {
 
 export default function Sidebar() {
   return (
-    <aside className="w-64 flex-shrink-0 h-full border-r border-neutral-200 bg-white">
+    <aside className="w-64 flex-shrink-0 h-full border-r border-neutral-200 bg-white flex flex-col">
       {/* 로고 */}
       <div className="h-16 flex items-center px-6 border-b border-neutral-200">
         <Link href="/dashboard" className="text-lg font-bold text-blue-600">
@@ -63,10 +85,22 @@ export default function Sidebar() {
       </div>
 
       {/* 네비게이션 */}
-      <nav className="p-4 space-y-1">
+      <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
         {navItems.map((item) => (
           <NavLink key={item.href} item={item} />
         ))}
+
+        {/* 공고 섹션 */}
+        <div className="pt-3">
+          <p className="px-3 pb-1 text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+            공고
+          </p>
+          <div className="space-y-1">
+            {bidItems.map((item) => (
+              <NavLink key={item.href} item={item} />
+            ))}
+          </div>
+        </div>
       </nav>
 
       <div className="px-4">
