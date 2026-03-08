@@ -9,7 +9,7 @@ test-spec.md 기준:
 """
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 # 구현 전이므로 import 시 ImportError 발생 - RED 상태

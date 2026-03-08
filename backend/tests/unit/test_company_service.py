@@ -8,8 +8,7 @@ test-spec.md 기준:
 - UT-80~UT-83: 권한 검증 유틸리티
 """
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 # 구현 전이므로 import 시 ImportError 발생 - RED 상태

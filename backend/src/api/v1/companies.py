@@ -1,11 +1,15 @@
 """회사 프로필 API 엔드포인트"""
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.core.security import AuthError, ValidationError, decode_token
-from src.services.company_service import AppException, CompanyService
+from src.services.company_service import (
+    AppException,
+    CompanyService,
+    _register_user,
+)
 
 router = APIRouter()
 
@@ -33,6 +37,26 @@ def get_current_user_payload(request: Request) -> dict[str, Any]:
 def get_company_service() -> CompanyService:
     """CompanyService 인스턴스 반환"""
     return CompanyService(db=None)
+
+
+def _get_user_id(payload: dict[str, Any]) -> str:
+    """JWT payload에서 user_id 추출 (str 보장)"""
+    return str(payload.get("sub") or "")
+
+
+def _parse_page_params(params: dict[str, str]) -> tuple[int, int]:
+    """page, pageSize 파라미터 파싱 및 검증"""
+    try:
+        page = int(params.get("page", 1))
+    except ValueError:
+        page = 1
+    try:
+        page_size = int(params.get("pageSize", 20))
+    except ValueError:
+        page_size = 20
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+    return page, page_size
 
 
 # ----------------------------------------------------------------
@@ -92,7 +116,7 @@ async def create_company(request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     company_id_from_token = payload.get("company_id")
 
     # JWT에 company_id가 있으면 이미 소속된 사용자
@@ -141,7 +165,7 @@ async def get_my_company(request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     company_id_from_token = payload.get("company_id")
 
     if not company_id_from_token:
@@ -149,17 +173,9 @@ async def get_my_company(request: Request) -> JSONResponse:
 
     service = get_company_service()
 
-    # store에서 조회하기 위해 user 등록
-    from src.services.company_service import _users, CompanyResponse
+    # JWT company_id로 user 정보를 서비스 store에 등록
     mock_user_obj = type("U", (), {"id": user_id, "company_id": company_id_from_token})()
-    _users[str(user_id)] = mock_user_obj
-
-    # 회사 정보가 store에 없으면 JWT의 company_id로 간단한 응답 반환
-    from src.services.company_service import _companies
-    company = _companies.get(str(company_id_from_token))
-
-    if company is None or company.deleted_at is not None:
-        return error_response("COMPANY_001", "회사를 찾을 수 없습니다.", 404)
+    _register_user(mock_user_obj)
 
     try:
         result = await service.get_my_company(user_id=user_id)
@@ -197,7 +213,7 @@ async def update_company(company_id: str, request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -244,7 +260,7 @@ async def create_performance(company_id: str, request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -295,10 +311,9 @@ async def list_performances(company_id: str, request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     params = dict(request.query_params)
-    page = int(params.get("page", 1))
-    page_size = int(params.get("pageSize", 20))
+    page, page_size = _parse_page_params(params)
     filters: dict[str, Any] = {}
     if "status" in params:
         filters["status"] = params["status"]
@@ -356,7 +371,7 @@ async def update_performance(
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -404,7 +419,7 @@ async def delete_performance(
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     service = get_company_service()
 
     try:
@@ -432,7 +447,7 @@ async def set_representative(
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -473,7 +488,7 @@ async def create_certification(company_id: str, request: Request) -> JSONRespons
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -520,10 +535,9 @@ async def list_certifications(company_id: str, request: Request) -> JSONResponse
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     params = dict(request.query_params)
-    page = int(params.get("page", 1))
-    page_size = int(params.get("pageSize", 20))
+    page, page_size = _parse_page_params(params)
 
     service = get_company_service()
 
@@ -574,7 +588,7 @@ async def update_certification(
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -623,7 +637,7 @@ async def delete_certification(
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     service = get_company_service()
 
     try:
@@ -649,7 +663,7 @@ async def invite_member(company_id: str, request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
 
     try:
         body = await request.json()
@@ -699,10 +713,9 @@ async def list_members(company_id: str, request: Request) -> JSONResponse:
     except AuthError as e:
         return error_response(e.code, e.message, e.status_code)
 
-    user_id = payload.get("sub")
+    user_id = _get_user_id(payload)
     params = dict(request.query_params)
-    page = int(params.get("page", 1))
-    page_size = int(params.get("pageSize", 20))
+    page, page_size = _parse_page_params(params)
 
     service = get_company_service()
 
