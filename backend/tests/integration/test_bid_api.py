@@ -84,7 +84,8 @@ bids_app = BidsMockApp()
 
 SAMPLE_TOKEN = "Bearer test-token-owner"
 MEMBER_TOKEN = "Bearer test-token-member"
-SAMPLE_BID_ID = str(uuid4())
+# API 초기화 샘플 데이터의 고정 bid_id (bids.py _init_sample_data 참조)
+SAMPLE_BID_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
 @pytest.fixture
@@ -420,15 +421,13 @@ class TestGetBidMatches:
     @pytest.mark.asyncio
     async def test_매칭_결과_조회_신규_분석(self, bids_client):
         """
-        Given: 매칭 분석이 없는 bid_id (lazy evaluation)
+        Given: 존재하는 공고이나 매칭 분석이 없는 경우 (lazy evaluation)
         When: GET /api/v1/bids/{id}/matches
         Then: 200 OK, 새로 분석된 매칭 결과
         """
-        new_bid_id = str(uuid4())
-
-        # Act
+        # Act — 존재하는 공고 ID 사용 (기존 매칭 없음)
         response = await bids_client.get(
-            f"/api/v1/bids/{new_bid_id}/matches",
+            f"/api/v1/bids/{SAMPLE_BID_ID}/matches",
             headers={"Authorization": SAMPLE_TOKEN}
         )
 

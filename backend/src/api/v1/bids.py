@@ -436,31 +436,10 @@ async def get_bid_matches(bid_id: str, request: Request) -> JSONResponse:
     if not user.get("company_id"):
         return error_response("COMPANY_001", "회사를 찾을 수 없습니다.", 404)
 
-    # 공고 존재 여부 확인 (없으면 lazy evaluation 용 임시 bid 생성)
+    # 공고 존재 여부 확인
     bid = _SAMPLE_BIDS.get(bid_id)
     if bid is None:
-        bid = {
-            "id": bid_id,
-            "bidNumber": "20260308000-00",
-            "title": "공고 정보",
-            "description": "",
-            "organization": "",
-            "region": None,
-            "category": None,
-            "bidType": None,
-            "contractMethod": None,
-            "budget": None,
-            "estimatedPrice": None,
-            "announcementDate": None,
-            "deadline": datetime.now(timezone.utc).isoformat(),
-            "openDate": None,
-            "status": "open",
-            "scoringCriteria": None,
-            "attachments": [],
-            "crawledAt": datetime.now(timezone.utc).isoformat(),
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-        _SAMPLE_BIDS[bid_id] = bid
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
 
     user_id = str(user.get("sub", ""))
     match_key = f"{user_id}:{bid_id}"
