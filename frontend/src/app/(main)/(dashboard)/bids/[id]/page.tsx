@@ -12,11 +12,13 @@ import { HttpError } from '@/lib/api/client';
 import type { BidDetail } from '@/types/bid';
 import type { BidMatchResult } from '@/types/bid-match';
 import type { ScoringResult } from '@/types/scoring';
+import type { StrategyResult } from '@/types/strategy';
 import { BidStatusBadge } from '@/components/bids/BidStatusBadge';
 import { DeadlineBadge } from '@/components/bids/DeadlineBadge';
 import { RecommendationBadge } from '@/components/bids/RecommendationBadge';
 import { BidAttachmentList } from '@/components/bids/BidAttachmentList';
 import { ScoringPanel, ScoringPanelSkeleton } from '@/components/bids/ScoringPanel';
+import { StrategyPanel } from '@/components/bids/StrategyPanel';
 
 function formatBudget(budget?: number): string {
   if (!budget) return '-';
@@ -248,19 +250,23 @@ export default function BidDetailPage() {
   const [bid, setBid] = useState<BidDetail | null>(null);
   const [matchResult, setMatchResult] = useState<BidMatchResult | null>(null);
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
+  const [strategyData, setStrategyData] = useState<StrategyResult | null>(null);
   const [isLoadingBid, setIsLoadingBid] = useState(true);
   const [isLoadingMatch, setIsLoadingMatch] = useState(true);
   const [isLoadingScoring, setIsLoadingScoring] = useState(true);
+  const [isLoadingStrategy, setIsLoadingStrategy] = useState(true);
   const [hasCompanyProfile, setHasCompanyProfile] = useState(true);
   const [bidError, setBidError] = useState<string | null>(null);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bidId) return;
 
-    // 공고 상세 + 매칭 결과 + 스코어링 병렬 호출
+    // 공고 상세 + 매칭 결과 + 스코어링 + 전략 분석 병렬 호출
     setIsLoadingBid(true);
     setIsLoadingMatch(true);
     setIsLoadingScoring(true);
+    setIsLoadingStrategy(true);
 
     bidsApi.getBid(bidId)
       .then((data) => {
@@ -309,6 +315,17 @@ export default function BidDetailPage() {
       })
       .finally(() => {
         setIsLoadingScoring(false);
+      });
+
+    bidsApi.getBidStrategy(bidId)
+      .then((data) => {
+        setStrategyData(data);
+      })
+      .catch(() => {
+        setStrategyError('전략 분석 정보를 불러올 수 없습니다.');
+      })
+      .finally(() => {
+        setIsLoadingStrategy(false);
       });
   }, [bidId]);
 
@@ -502,7 +519,7 @@ export default function BidDetailPage() {
           </div>
         </div>
 
-        {/* 우: 스코어링/매칭 사이드바 (1/3) */}
+        {/* 우: 스코어링/전략/매칭 사이드바 (1/3) */}
         <div className="space-y-4">
           {/* 낙찰 가능성 스코어링 (F-02) */}
           {hasCompanyProfile && (
@@ -510,24 +527,22 @@ export default function BidDetailPage() {
               <ScoringPanelSkeleton />
             ) : scoringResult ? (
               <ScoringPanel scoring={scoringResult} />
-            ) : (
-              /* 스코어링 실패 시 기존 매칭 결과로 폴백 */
-              <MatchSection
-                matchResult={matchResult}
-                isLoadingMatch={isLoadingMatch}
-                hasCompanyProfile={hasCompanyProfile}
-              />
-            )
+            ) : null
           )}
 
-          {/* 회사 프로필 미등록 시 안내 */}
-          {!hasCompanyProfile && (
-            <MatchSection
-              matchResult={matchResult}
-              isLoadingMatch={isLoadingMatch}
-              hasCompanyProfile={false}
-            />
-          )}
+          {/* 투찰 전략 패널 (F-04) */}
+          <StrategyPanel
+            bidId={bidId}
+            strategyData={strategyData}
+            isLoading={isLoadingStrategy}
+            error={strategyError}
+          />
+
+          <MatchSection
+            matchResult={matchResult}
+            isLoadingMatch={isLoadingMatch}
+            hasCompanyProfile={hasCompanyProfile}
+          />
         </div>
       </div>
     </div>

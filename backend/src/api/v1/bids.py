@@ -451,6 +451,109 @@ async def get_bid_matches(bid_id: str, request: Request) -> JSONResponse:
 
 
 # ----------------------------------------------------------------
+# GET /api/v1/bids/{bid_id}/strategy — 투찰 전략 분석
+# ----------------------------------------------------------------
+
+@router.get("/{bid_id}/strategy")
+async def get_bid_strategy(bid_id: str, request: Request) -> JSONResponse:
+    """공고 투찰 전략 분석 결과 조회"""
+    # UUID 형식 검사
+    try:
+        import uuid
+        uuid.UUID(bid_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {"code": "VALIDATION_001", "message": "유효하지 않은 공고 ID 형식입니다."},
+            },
+        )
+
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    bid = _SAMPLE_BIDS.get(bid_id)
+    if bid is None:
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
+
+    try:
+        from src.services.bidding_strategy_service import BiddingStrategyService
+        from unittest.mock import AsyncMock
+
+        service = BiddingStrategyService(db=AsyncMock())
+        result = await service.analyze_strategy(bid_id)
+        return success_response(data=result.model_dump())
+    except AppException as e:
+        return error_response(e.code, e.message, e.status_code)
+    except Exception as e:
+        logger.error("투찰 전략 분석 오류: %s", str(e))
+        return error_response("STRATEGY_001", "투찰 전략 분석 중 오류가 발생했습니다.", 500)
+
+
+# ----------------------------------------------------------------
+# POST /api/v1/bids/{bid_id}/strategy/simulate — 투찰가 시뮬레이션
+# ----------------------------------------------------------------
+
+@router.post("/{bid_id}/strategy/simulate")
+async def simulate_bid_strategy(bid_id: str, request: Request) -> JSONResponse:
+    """투찰가 시뮬레이션 — 입력 금액의 낙찰 확률 계산"""
+    # UUID 형식 검사
+    try:
+        import uuid
+        uuid.UUID(bid_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {"code": "VALIDATION_001", "message": "유효하지 않은 공고 ID 형식입니다."},
+            },
+        )
+
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    bid = _SAMPLE_BIDS.get(bid_id)
+    if bid is None:
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
+
+    # 요청 본문 파싱
+    try:
+        body = await request.json()
+    except Exception:
+        return error_response("VALIDATION_001", "요청 본문이 유효하지 않습니다.", 400)
+
+    if "bidPrice" not in body:
+        return error_response("VALIDATION_001", "bidPrice는 필수 입력값입니다.", 400)
+
+    try:
+        bid_price = int(body["bidPrice"])
+    except (ValueError, TypeError):
+        return error_response("VALIDATION_001", "bidPrice는 정수여야 합니다.", 400)
+
+    if bid_price < 0:
+        return error_response("VALIDATION_001", "bidPrice는 0 이상이어야 합니다.", 400)
+
+    try:
+        from src.services.bidding_strategy_service import BiddingStrategyService
+        from unittest.mock import AsyncMock
+
+        service = BiddingStrategyService(db=AsyncMock())
+        result = await service.simulate(bid_id, bid_price)
+        return success_response(data=result.model_dump())
+    except AppException as e:
+        return error_response(e.code, e.message, e.status_code)
+    except Exception as e:
+        logger.error("투찰 시뮬레이션 오류: %s", str(e))
+        return error_response("STRATEGY_001", "투찰 전략 분석 중 오류가 발생했습니다.", 500)
+
+
+# ----------------------------------------------------------------
 # POST /api/v1/bids/collect — 수동 수집 트리거
 # ----------------------------------------------------------------
 

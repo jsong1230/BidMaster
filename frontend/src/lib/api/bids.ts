@@ -1,6 +1,7 @@
 /**
  * F-01 공고 자동 수집 및 매칭 — 공고 API 클라이언트
  * F-02 낙찰 가능성 스코어링 API 클라이언트
+ * F-04 낙찰가 예측 및 투찰 전략 — strategy API 포함
  */
 import { apiClient } from './client';
 import type { BidDetail, BidItem, BidListParams, TriggerCollectionResponse } from '@/types/bid';
@@ -10,6 +11,7 @@ import type {
   MatchedBidListParams,
 } from '@/types/bid-match';
 import type { ScoringResult } from '@/types/scoring';
+import type { StrategyResult, SimulationResult } from '@/types/strategy';
 import type { PaginationMeta } from './client';
 
 function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
@@ -105,5 +107,21 @@ export const bidsApi = {
    */
   triggerCollect: async (): Promise<TriggerCollectionResponse> => {
     return apiClient.post<TriggerCollectionResponse>('/bids/collect');
+  },
+
+  /**
+   * 투찰 전략 분석 조회
+   * GET /api/v1/bids/{id}/strategy
+   */
+  getBidStrategy: async (bidId: string): Promise<StrategyResult> => {
+    return apiClient.get<StrategyResult>(`/bids/${bidId}/strategy`);
+  },
+
+  /**
+   * 투찰가 시뮬레이션
+   * POST /api/v1/bids/{id}/strategy/simulate
+   */
+  simulateBidStrategy: async (bidId: string, bidPrice: number): Promise<SimulationResult> => {
+    return apiClient.post<SimulationResult>(`/bids/${bidId}/strategy/simulate`, { bidPrice });
   },
 };

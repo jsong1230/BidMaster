@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from tests.conftest import MockApp
+from src.core.security import create_access_token
 
 
 # ============================================================
@@ -22,6 +23,13 @@ from tests.conftest import MockApp
 
 SAMPLE_BID_ID = str(uuid4())
 SAMPLE_BID_ID_LOWEST = str(uuid4())
+
+# 실제 JWT 토큰 생성 (테스트용)
+_owner_jwt = create_access_token(
+    subject="user-owner-001",
+    extra_data={"role": "owner", "company_id": "company-001"},
+)
+VALID_TOKEN = f"Bearer {_owner_jwt}"
 
 # 구현 전 — RED 상태: bidding_strategy_service import 시도 (FAIL 트리거)
 try:
@@ -84,7 +92,7 @@ class Test전략분석_정상요청:
     async def test_정상분석_적격심사_200(self, strategy_client):
         """정상 요청 (적격심사) → 200, contractMethod='적격심사', recommendedRanges 3구간"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -107,7 +115,7 @@ class Test전략분석_정상요청:
     async def test_정상분석_최저가_200(self, strategy_client):
         """정상 요청 (최저가) → 200, contractMethod='최저가', recommendedRanges 3구간"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -125,7 +133,7 @@ class Test전략분석_정상요청:
     async def test_winRateDistribution_구조(self, strategy_client):
         """winRateDistribution: sampleCount > 0, mean/std/median/q25/q75 모두 존재"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -143,7 +151,7 @@ class Test전략분석_정상요청:
     async def test_winProbability_범위_0_100(self, strategy_client):
         """모든 winProbability: 0 <= p <= 100"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -162,7 +170,7 @@ class Test전략분석_정상요청:
     async def test_recommendedRanges_일관성(self, strategy_client):
         """safe.minPrice >= moderate.maxPrice, moderate.minPrice >= aggressive.maxPrice (대략)"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -184,7 +192,7 @@ class Test전략분석_정상요청:
     async def test_유사공고_없음_기본구간_사용(self, strategy_client):
         """이력 없는 공고 → 200, 기본 분포/구간 사용, strategyReport에 '데이터 부족' 표시"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         no_history_bid_id = str(uuid4())
 
         # Act
@@ -208,7 +216,7 @@ class Test전략분석_정상요청:
     async def test_estimatedPrice_없는_공고_budget_폴백(self, strategy_client):
         """estimated_price 없고 budget만 있는 공고 → 200, estimatedPrice=budget"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -255,7 +263,7 @@ class Test전략분석_에러케이스:
     async def test_존재하지않는_공고_404(self, strategy_client):
         """잘못된 bid_id → 404, BID_001"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         nonexistent_id = str(uuid4())
 
         # Act
@@ -275,7 +283,7 @@ class Test전략분석_에러케이스:
     async def test_공고ID_형식오류_422(self, strategy_client):
         """bid_id='invalid' → 422"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.get(
@@ -298,7 +306,7 @@ class Test시뮬레이션_정상요청:
     async def test_정상_시뮬레이션_200(self, strategy_client):
         """정상 시뮬레이션 → 200, bidRate > 0, winProbability 0~100, riskLevel 포함"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         body = {"bidPrice": 410_000_000}
 
         # Act
@@ -319,7 +327,7 @@ class Test시뮬레이션_정상요청:
     async def test_시뮬레이션_comparisonWithRecommended_포함(self, strategy_client):
         """시뮬레이션 결과에 safe/moderate/aggressive 비교 문구 포함"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         body = {"bidPrice": 410_000_000}
 
         # Act
@@ -340,7 +348,7 @@ class Test시뮬레이션_정상요청:
     async def test_시뮬레이션_bidPrice_0_처리(self, strategy_client):
         """bidPrice=0 → 200, bidRate=0, 특수 처리"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         body = {"bidPrice": 0}
 
         # Act
@@ -380,7 +388,7 @@ class Test시뮬레이션_에러케이스:
     async def test_bidPrice_누락_400(self, strategy_client):
         """bidPrice 누락 (빈 body) → 400, VALIDATION_001"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.post(
@@ -397,7 +405,7 @@ class Test시뮬레이션_에러케이스:
     async def test_bidPrice_음수_400(self, strategy_client):
         """bidPrice=-100 → 400, VALIDATION_001"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act
         response = await strategy_client.post(
@@ -414,7 +422,7 @@ class Test시뮬레이션_에러케이스:
     async def test_존재하지않는_공고_404(self, strategy_client):
         """잘못된 bid_id → 404, BID_001"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         nonexistent_id = str(uuid4())
 
         # Act
@@ -433,7 +441,7 @@ class Test시뮬레이션_에러케이스:
     async def test_예정가격없는_공고_422(self, strategy_client):
         """estimated_price=None, budget=None → 422, STRATEGY_002"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
         no_price_bid_id = str(uuid4())  # 예정가격 없는 공고로 설정 필요
 
         # Act
@@ -472,7 +480,7 @@ class Test전략_회귀:
     async def test_scoring_엔드포인트_URL_충돌없음(self, strategy_client):
         """F-02 scoring 엔드포인트와 F-04 strategy 엔드포인트 URL 충돌 없음"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN}
 
         # Act — 두 엔드포인트 각각 요청
         resp_scoring = await strategy_client.get(
