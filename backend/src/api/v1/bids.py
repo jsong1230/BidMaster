@@ -18,7 +18,7 @@ router = APIRouter()
 VALID_BID_STATUS = {"open", "closed", "awarded", "cancelled"}
 VALID_SORT_BY = {"deadline", "announcementDate", "budget", "createdAt"}
 VALID_SORT_ORDER = {"asc", "desc"}
-VALID_RECOMMENDATION = {"recommended", "neutral", "not_recommended"}
+VALID_RECOMMENDATION = {"strongly_recommended", "recommended", "neutral", "not_recommended"}
 
 # ----------------------------------------------------------------
 # 인메모리 스토어 (공고 / 매칭 결과)
@@ -484,3 +484,68 @@ async def trigger_collect(request: Request) -> JSONResponse:
             },
         },
     )
+
+
+# ----------------------------------------------------------------
+# GET /api/v1/bids/{bid_id}/scoring — 낙찰 가능성 스코어링 조회
+# ----------------------------------------------------------------
+
+@router.get("/{bid_id}/scoring")
+async def get_bid_scoring(bid_id: str, request: Request) -> JSONResponse:
+    """낙찰 가능성 스코어링 결과 조회 (lazy evaluation)"""
+    # UUID 형식 검사
+    try:
+        import uuid as _uuid
+        _uuid.UUID(bid_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {"code": "VALIDATION_001", "message": "유효하지 않은 공고 ID 형식입니다."},
+            },
+        )
+
+    # 인증 확인
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    # 회사 없는 사용자 처리
+    if not user.get("company_id"):
+        return error_response("COMPANY_001", "회사를 찾을 수 없습니다.", 404)
+
+    # 공고 존재 여부 확인
+    bid = _SAMPLE_BIDS.get(bid_id)
+    if bid is None:
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
+
+    user_id = str(user.get("sub", ""))
+
+    # ScoringService를 통한 스코어링
+    try:
+        from src.services.scoring_service import ScoringService
+
+        scoring_service = ScoringService(db=None)
+
+        # JWT의 company_id로 임시 회사 객체 생성 (인메모리 MVP)
+        class _InlineCompany:
+            def __init__(self, company_id: str, scale: str = "medium"):
+                self.id = company_id
+                self.scale = scale
+                self.industry = "IT서비스"
+                self.description = ""
+
+        company_id = str(user.get("company_id", ""))
+        inline_company = _InlineCompany(company_id)
+
+        # 회사 객체를 직접 주입하여 스코어링 실행
+        result = await scoring_service.score(user_id, bid_id, company=inline_company)
+        return success_response(data=result)
+
+    except AppException as e:
+        return error_response(e.code, e.message, e.status_code)
+    except Exception as e:
+        logger.error(f"스코어링 오류: {e}")
+        return error_response("SCORING_001", "스코어링 분석 중 오류가 발생했습니다.", 500)

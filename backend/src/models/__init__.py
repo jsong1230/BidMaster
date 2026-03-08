@@ -6,6 +6,7 @@ from src.models.oauth_state import OAuthState
 from src.models.bid import Bid
 from src.models.bid_attachment import BidAttachment
 from src.models.user_bid_match import UserBidMatch
+from src.models.bid_win_history import BidWinHistory
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "Bid",
     "BidAttachment",
     "UserBidMatch",
+    "BidWinHistory",
 ]

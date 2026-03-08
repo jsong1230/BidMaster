@@ -13,14 +13,28 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from tests.conftest import MockApp
+from src.core.security import create_access_token
 
 
 # ============================================================
 # 통합 테스트용 Mock App — scoring 엔드포인트 포함
 # ============================================================
 
-SAMPLE_BID_ID = str(uuid4())
+# bids.py 샘플 데이터의 고정 bid_id
+SAMPLE_BID_ID = "550e8400-e29b-41d4-a716-446655440000"
 SAMPLE_USER_ID = "user-owner-001"
+
+# 테스트용 JWT 토큰 생성
+_VALID_TOKEN = create_access_token(
+    subject=SAMPLE_USER_ID,
+    extra_data={"role": "owner", "company_id": "company-001"},
+)
+_NO_COMPANY_TOKEN = create_access_token(
+    subject="user-nocompany-001",
+    extra_data={"role": "member", "company_id": None},
+)
+VALID_TOKEN_HEADER = f"Bearer {_VALID_TOKEN}"
+NO_COMPANY_TOKEN_HEADER = f"Bearer {_NO_COMPANY_TOKEN}"
 
 # 구현 전 — RED 상태: scoring_service import 시도 (FAIL 트리거)
 try:
@@ -73,7 +87,7 @@ class Test스코어링_정상_요청:
     async def test_정상_스코어링_200_반환(self, scoring_client):
         """정상 요청 → 200, scores 4개 항목 모두 > 0, recommendation 포함"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -99,7 +113,7 @@ class Test스코어링_정상_요청:
     async def test_정상_스코어링_scores_total_범위(self, scoring_client):
         """scores.total은 항상 0~100"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -116,7 +130,7 @@ class Test스코어링_정상_요청:
     async def test_정상_recommendation_4단계_중_하나(self, scoring_client):
         """recommendation은 4단계 중 하나"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -134,7 +148,7 @@ class Test스코어링_정상_요청:
     async def test_details_구조_검증(self, scoring_client):
         """details에 suitability/competition/capability/market 각각 score + factors"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -155,7 +169,7 @@ class Test스코어링_정상_요청:
     async def test_competitorStats_포함(self, scoring_client):
         """competitorStats: estimatedCompetitors >= 0, topCompetitors 배열"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -173,7 +187,7 @@ class Test스코어링_정상_요청:
     async def test_similarBidStats_포함(self, scoring_client):
         """similarBidStats: totalCount >= 0, avgWinRate, avgWinningPrice 포함"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -192,7 +206,7 @@ class Test스코어링_정상_요청:
     async def test_weights_필드_포함(self, scoring_client):
         """weights 필드: 4개 항목 합계 = 1.0"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -245,7 +259,7 @@ class Test스코어링_에러케이스:
     async def test_존재하지않는_공고_404(self, scoring_client):
         """잘못된 bid_id → 404, BID_001"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
         nonexistent_id = str(uuid4())
 
         # Act
@@ -265,7 +279,7 @@ class Test스코어링_에러케이스:
     async def test_회사_미등록_사용자_404(self, scoring_client):
         """회사 없는 사용자 → 404, COMPANY_001"""
         # Arrange — 회사 미등록 사용자 토큰
-        headers = {"Authorization": "Bearer token-no-company"}
+        headers = {"Authorization": NO_COMPANY_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -284,7 +298,7 @@ class Test스코어링_에러케이스:
     async def test_공고ID_형식오류_422(self, scoring_client):
         """bid_id="invalid" (UUID 형식 아님) → 422"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(
@@ -306,7 +320,7 @@ class Test스코어링_Lazy평가:
     async def test_lazy_evaluation_즉시분석_실행(self, scoring_client):
         """스코어링 미수행 공고 → 즉시 분석 실행 후 결과 반환 (200)"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act — 첫 번째 요청 (캐시 없음)
         response = await scoring_client.get(
@@ -323,7 +337,7 @@ class Test스코어링_Lazy평가:
     async def test_캐시된_결과_재요청시_analyzedAt_동일(self, scoring_client):
         """이미 스코어링된 공고 → 재요청 시 캐시된 결과 반환 (analyzed_at 동일)"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act — 두 번 요청
         response1 = await scoring_client.get(
@@ -355,7 +369,7 @@ class Test스코어링_회귀:
     async def test_기존_matches_엔드포인트_여전히_동작(self, scoring_client):
         """F-01 GET /bids/{id}/matches 엔드포인트가 여전히 동작"""
         # Arrange
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = {"Authorization": VALID_TOKEN_HEADER}
 
         # Act
         response = await scoring_client.get(

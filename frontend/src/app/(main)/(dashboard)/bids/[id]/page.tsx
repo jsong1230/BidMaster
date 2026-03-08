@@ -11,10 +11,12 @@ import { bidsApi } from '@/lib/api/bids';
 import { HttpError } from '@/lib/api/client';
 import type { BidDetail } from '@/types/bid';
 import type { BidMatchResult } from '@/types/bid-match';
+import type { ScoringResult } from '@/types/scoring';
 import { BidStatusBadge } from '@/components/bids/BidStatusBadge';
 import { DeadlineBadge } from '@/components/bids/DeadlineBadge';
 import { RecommendationBadge } from '@/components/bids/RecommendationBadge';
 import { BidAttachmentList } from '@/components/bids/BidAttachmentList';
+import { ScoringPanel, ScoringPanelSkeleton } from '@/components/bids/ScoringPanel';
 
 function formatBudget(budget?: number): string {
   if (!budget) return '-';
@@ -245,17 +247,20 @@ export default function BidDetailPage() {
 
   const [bid, setBid] = useState<BidDetail | null>(null);
   const [matchResult, setMatchResult] = useState<BidMatchResult | null>(null);
+  const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   const [isLoadingBid, setIsLoadingBid] = useState(true);
   const [isLoadingMatch, setIsLoadingMatch] = useState(true);
+  const [isLoadingScoring, setIsLoadingScoring] = useState(true);
   const [hasCompanyProfile, setHasCompanyProfile] = useState(true);
   const [bidError, setBidError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bidId) return;
 
-    // 공고 상세 + 매칭 결과 병렬 호출
+    // 공고 상세 + 매칭 결과 + 스코어링 병렬 호출
     setIsLoadingBid(true);
     setIsLoadingMatch(true);
+    setIsLoadingScoring(true);
 
     bidsApi.getBid(bidId)
       .then((data) => {
@@ -287,6 +292,23 @@ export default function BidDetailPage() {
       })
       .finally(() => {
         setIsLoadingMatch(false);
+      });
+
+    // 스코어링 결과 조회 (lazy evaluation)
+    bidsApi.getBidScoring(bidId)
+      .then((data) => {
+        setScoringResult(data);
+        setHasCompanyProfile(true);
+      })
+      .catch((err: unknown) => {
+        const error = err as HttpError;
+        if (error?.code === 'COMPANY_001') {
+          setHasCompanyProfile(false);
+        }
+        // 스코어링 실패는 무시 (매칭 결과로 폴백)
+      })
+      .finally(() => {
+        setIsLoadingScoring(false);
       });
   }, [bidId]);
 
@@ -480,13 +502,32 @@ export default function BidDetailPage() {
           </div>
         </div>
 
-        {/* 우: 매칭 사이드바 (1/3) */}
+        {/* 우: 스코어링/매칭 사이드바 (1/3) */}
         <div className="space-y-4">
-          <MatchSection
-            matchResult={matchResult}
-            isLoadingMatch={isLoadingMatch}
-            hasCompanyProfile={hasCompanyProfile}
-          />
+          {/* 낙찰 가능성 스코어링 (F-02) */}
+          {hasCompanyProfile && (
+            isLoadingScoring ? (
+              <ScoringPanelSkeleton />
+            ) : scoringResult ? (
+              <ScoringPanel scoring={scoringResult} />
+            ) : (
+              /* 스코어링 실패 시 기존 매칭 결과로 폴백 */
+              <MatchSection
+                matchResult={matchResult}
+                isLoadingMatch={isLoadingMatch}
+                hasCompanyProfile={hasCompanyProfile}
+              />
+            )
+          )}
+
+          {/* 회사 프로필 미등록 시 안내 */}
+          {!hasCompanyProfile && (
+            <MatchSection
+              matchResult={matchResult}
+              isLoadingMatch={isLoadingMatch}
+              hasCompanyProfile={false}
+            />
+          )}
         </div>
       </div>
     </div>

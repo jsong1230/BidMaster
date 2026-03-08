@@ -1,5 +1,6 @@
 /**
  * F-01 공고 자동 수집 및 매칭 — 공고 API 클라이언트
+ * F-02 낙찰 가능성 스코어링 API 클라이언트
  */
 import { apiClient } from './client';
 import type { BidDetail, BidItem, BidListParams, TriggerCollectionResponse } from '@/types/bid';
@@ -8,6 +9,7 @@ import type {
   MatchedBidItem,
   MatchedBidListParams,
 } from '@/types/bid-match';
+import type { ScoringResult } from '@/types/scoring';
 import type { PaginationMeta } from './client';
 
 function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
@@ -87,6 +89,14 @@ export const bidsApi = {
       items: result.items,
       meta: result.meta ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 },
     };
+  },
+
+  /**
+   * 낙찰 가능성 스코어링 조회 (lazy evaluation)
+   * GET /api/v1/bids/{id}/scoring
+   */
+  getBidScoring: async (bidId: string): Promise<ScoringResult> => {
+    return apiClient.get<ScoringResult>(`/bids/${bidId}/scoring`);
   },
 
   /**

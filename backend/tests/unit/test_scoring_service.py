@@ -305,7 +305,7 @@ class Test역량점수:
 
     @pytest.mark.asyncio
     async def test_만료된_인증만_보유_인증점수_낮음(
-        self, scoring_service, company_medium, performances_빈, certifications_만료, bid_행정안전부_정보화
+        self, scoring_service, company_medium, performances_빈, certifications_만료, certifications_빈, bid_행정안전부_정보화
     ):
         """만료된 인증만 보유 → 인증 유효율 0, 유효 인증 없는 경우보다 점수 낮거나 같음"""
         # Arrange & Act
