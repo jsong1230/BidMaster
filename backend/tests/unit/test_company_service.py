@@ -114,7 +114,7 @@ class TestCreateCompany:
         from src.services.company_service import AppException
 
         invalid_data = {
-            "businessNumber": "1234567891",  # 체크섬 불일치
+            "businessNumber": "1234567890",  # 체크섬 불일치
             "name": "테스트 주식회사",
         }
 
@@ -368,7 +368,7 @@ class TestUpdateCompany:
     @pytest.mark.asyncio
     async def test_UT34_존재하지_않는_회사_AppException_404(self, mock_user):
         """
-        Given: 잘못된 company_id
+        Given: 잘못된 company_id (멤버십은 있지만 회사가 store에 없는 경우)
         When: update_company 호출
         Then: AppException(COMPANY_001, 404) 발생
         """
@@ -377,7 +377,12 @@ class TestUpdateCompany:
         non_existent_id = str(uuid4())
 
         service = CompanyService(mock_db)
-        from src.services.company_service import AppException
+        from src.services.company_service import AppException, _register_member
+        from tests.conftest import MockCompanyMember
+
+        # mock_user를 해당 비존재 회사의 owner로 등록 (멤버십은 있지만 회사는 store에 없음)
+        member = MockCompanyMember(company_id=non_existent_id, user_id=mock_user.id, role="owner")
+        _register_member(member)
 
         # Act & Assert
         with pytest.raises(AppException) as exc_info:

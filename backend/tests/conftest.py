@@ -99,13 +99,13 @@ class MockApp(FastAPI):
 
 class MockUser:
     """사용자 Mock"""
-    def __init__(self, id=None, email=None, password_hash=None, name=None, phone=None, role=None):
+    def __init__(self, id=None, email=None, password_hash=None, name=None, phone=None, role=None, company_id=None):
         self.id = id or str(uuid4())
         self.email = email or "test@example.com"
         self.password_hash = password_hash
         self.name = name or "테스트사용자"
         self.phone = phone
-        self.company_id = str(uuid4())
+        self.company_id = company_id  # 기본값 None (미소속)
         self.role = role or "owner"
         self.preferences: dict = {}
         self.last_login_at = None
@@ -262,12 +262,19 @@ def validation_error_codes():
 @pytest.fixture
 def mock_user():
     """테스트용 사용자 Mock Fixture"""
-    return MockUser(
+    user = MockUser(
         id=str(uuid4()),
         email="test@example.com",
         name="테스트사용자",
         phone="010-1234-5678",
     )
+    user.company_id = None  # 기본값: 미소속
+    try:
+        from src.services.company_service import _register_user
+        _register_user(user)
+    except ImportError:
+        pass
+    return user
 
 
 @pytest.fixture
@@ -504,7 +511,7 @@ class MockCompany:
         deleted_at=None,
     ):
         self.id = id or str(uuid4())
-        self.business_number = business_number or "1234567890"
+        self.business_number = business_number or "1234567891"
         self.name = name or "테스트 주식회사"
         self.ceo_name = ceo_name or "홍길동"
         self.address = address or "서울특별시 강남구"
@@ -600,11 +607,27 @@ class MockCertification:
         self.updated_at = datetime.now(timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def reset_company_store():
+    """각 테스트 전후로 CompanyService 인-메모리 저장소 초기화"""
+    try:
+        from src.services.company_service import _reset_store
+        _reset_store()
+    except ImportError:
+        pass
+    yield
+    try:
+        from src.services.company_service import _reset_store
+        _reset_store()
+    except ImportError:
+        pass
+
+
 @pytest.fixture
 def test_company_data():
     """테스트용 회사 데이터 Fixture"""
     return {
-        "businessNumber": "1234567890",
+        "businessNumber": "1234567891",
         "name": "테스트 주식회사",
         "ceoName": "홍길동",
         "address": "서울특별시 강남구",
@@ -646,14 +669,20 @@ def test_certification_data():
 @pytest.fixture
 def mock_company():
     """테스트용 회사 Mock Fixture"""
-    return MockCompany(
+    company = MockCompany(
         id=str(uuid4()),
-        business_number="1234567890",
+        business_number="1234567891",
         name="테스트 주식회사",
         ceo_name="홍길동",
         address="서울특별시 강남구",
         scale="small",
     )
+    try:
+        from src.services.company_service import _register_company
+        _register_company(company)
+    except ImportError:
+        pass
+    return company
 
 
 @pytest.fixture
@@ -665,74 +694,116 @@ def mock_deleted_company():
         name="삭제된 주식회사",
     )
     company.deleted_at = datetime.now(timezone.utc)
+    try:
+        from src.services.company_service import _register_company
+        _register_company(company)
+    except ImportError:
+        pass
     return company
 
 
 @pytest.fixture
 def mock_company_member_owner(mock_company, mock_user):
     """테스트용 owner 역할 멤버 Mock Fixture"""
-    return MockCompanyMember(
+    member = MockCompanyMember(
         id=str(uuid4()),
         company_id=mock_company.id,
         user_id=mock_user.id,
         role="owner",
     )
+    try:
+        from src.services.company_service import _register_member, _register_user
+        _register_user(mock_user)
+        _register_member(member)
+    except ImportError:
+        pass
+    return member
 
 
 @pytest.fixture
 def mock_company_member_admin(mock_company):
     """테스트용 admin 역할 멤버 Mock Fixture"""
-    return MockCompanyMember(
+    member = MockCompanyMember(
         id=str(uuid4()),
         company_id=mock_company.id,
         user_id=str(uuid4()),
         role="admin",
     )
+    try:
+        from src.services.company_service import _register_member
+        _register_member(member)
+    except ImportError:
+        pass
+    return member
 
 
 @pytest.fixture
 def mock_company_member_member(mock_company):
     """테스트용 member 역할 멤버 Mock Fixture"""
-    return MockCompanyMember(
+    member = MockCompanyMember(
         id=str(uuid4()),
         company_id=mock_company.id,
         user_id=str(uuid4()),
         role="member",
     )
+    try:
+        from src.services.company_service import _register_member
+        _register_member(member)
+    except ImportError:
+        pass
+    return member
 
 
 @pytest.fixture
 def mock_performance(mock_company):
     """테스트용 수행 실적 Mock Fixture"""
-    return MockPerformance(
+    performance = MockPerformance(
         id=str(uuid4()),
         company_id=mock_company.id,
         project_name="공공 SI 프로젝트",
         client_name="한국정보화진흥원",
         contract_amount=500000000,
     )
+    try:
+        from src.services.company_service import _register_performance
+        _register_performance(performance)
+    except ImportError:
+        pass
+    return performance
 
 
 @pytest.fixture
 def mock_representative_performance(mock_company):
     """테스트용 대표 실적 Mock Fixture"""
-    return MockPerformance(
+    performance = MockPerformance(
         id=str(uuid4()),
         company_id=mock_company.id,
         project_name="대표 실적 프로젝트",
         is_representative=True,
     )
+    try:
+        from src.services.company_service import _register_performance
+        _register_performance(performance)
+    except ImportError:
+        pass
+    return performance
 
 
 @pytest.fixture
 def mock_certification(mock_company):
     """테스트용 보유 인증 Mock Fixture"""
-    return MockCertification(
+    certification = MockCertification(
         id=str(uuid4()),
         company_id=mock_company.id,
         name="GS인증 1등급",
         issuer="한국정보통신기술협회",
     )
+    try:
+        from src.services.company_service import _register_certification
+        _register_certification(certification)
+    except ImportError:
+        pass
+    return certification
 
 
 # 회사 관련 에러 코드 상수

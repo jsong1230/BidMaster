@@ -36,7 +36,13 @@ class TestInviteMember:
         mock_db = AsyncMock()
         service = CompanyService(mock_db)
 
-        # 초대할 사용자 (미소속)
+        # 초대할 사용자 (미소속) - store에 등록
+        from tests.conftest import MockUser
+        from src.services.company_service import _register_user
+        target_user = MockUser(email="newmember@test.com", name="신규멤버")
+        target_user.company_id = None
+        _register_user(target_user)
+
         target_user_email = "newmember@test.com"
 
         # Act
@@ -64,6 +70,13 @@ class TestInviteMember:
         # Arrange
         mock_db = AsyncMock()
         service = CompanyService(mock_db)
+
+        # 초대할 사용자 (미소속) - store에 등록
+        from tests.conftest import MockUser
+        from src.services.company_service import _register_user
+        target_user = MockUser(email="anothermember@test.com", name="또다른멤버")
+        target_user.company_id = None
+        _register_user(target_user)
 
         target_email = "anothermember@test.com"
 

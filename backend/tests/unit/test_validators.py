@@ -22,15 +22,15 @@ class TestValidateBusinessNumber:
 
     def test_UT01_유효한_사업자등록번호_True_반환(self):
         """
-        Given: 유효한 체크섬을 가진 사업자등록번호 "1234567890"
+        Given: 유효한 체크섬을 가진 사업자등록번호 "1234567891"
         When: validate_business_number 호출
         Then: True 반환
         """
         # Arrange
         # 사업자등록번호 체크섬 알고리즘:
         # 가중치: [1, 3, 7, 1, 3, 7, 1, 3, 5]
-        # "1234567890" - 실제 유효한 번호로 가정 (테스트 명세 기준)
-        valid_number = "1234567890"
+        # "1234567891" - 체크섬 검증 통과하는 유효한 번호
+        valid_number = "1234567891"
 
         # Act
         result = validate_business_number(valid_number)
@@ -100,13 +100,13 @@ class TestValidateBusinessNumber:
 
     def test_UT06_체크섬_불일치_ValidationError(self):
         """
-        Given: 체크섬이 불일치하는 사업자등록번호 "1234567891"
+        Given: 체크섬이 불일치하는 사업자등록번호 "1234567890"
         When: validate_business_number 호출
         Then: ValidationError (COMPANY_003) 발생
         """
         # Arrange
-        # "1234567891" - 마지막 자리가 체크섬과 불일치하는 번호
-        invalid_checksum_number = "1234567891"
+        # "1234567890" - 마지막 자리가 체크섬(1)과 불일치하는 번호
+        invalid_checksum_number = "1234567890"
 
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:

@@ -180,7 +180,19 @@ class CompanyMockApp(MockApp):
             )
 
 
-company_app = CompanyMockApp()
+def _build_company_app():
+    """실제 companies 라우터가 포함된 FastAPI 앱 생성"""
+    try:
+        from fastapi import FastAPI
+        from src.api.v1.companies import router as companies_router
+        app = FastAPI(redirect_slashes=False)
+        app.include_router(companies_router, prefix="/api/v1/companies")
+        return app
+    except ImportError:
+        return CompanyMockApp()
+
+
+company_app = _build_company_app()
 
 
 @pytest.fixture
@@ -206,25 +218,73 @@ def auth_headers():
 
 @pytest.fixture
 def owner_auth_headers(mock_company):
-    """owner 역할 인증 헤더"""
+    """owner 역할 인증 헤더 (store에 멤버십 등록)"""
     from src.core.security import create_access_token
     user_id = str(uuid4())
     token = create_access_token(
         user_id,
         extra_data={"company_id": mock_company.id, "role": "owner"}
     )
+    # store에 멤버십 등록
+    try:
+        from src.services.company_service import _register_member
+        from tests.conftest import MockCompanyMember
+        member = MockCompanyMember(
+            company_id=mock_company.id,
+            user_id=user_id,
+            role="owner",
+        )
+        _register_member(member)
+    except ImportError:
+        pass
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_auth_headers(mock_company):
+    """admin 역할 인증 헤더 (store에 멤버십 등록)"""
+    from src.core.security import create_access_token
+    user_id = str(uuid4())
+    token = create_access_token(
+        user_id,
+        extra_data={"company_id": mock_company.id, "role": "admin"}
+    )
+    # store에 멤버십 등록
+    try:
+        from src.services.company_service import _register_member
+        from tests.conftest import MockCompanyMember
+        member = MockCompanyMember(
+            company_id=mock_company.id,
+            user_id=user_id,
+            role="admin",
+        )
+        _register_member(member)
+    except ImportError:
+        pass
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
 def member_auth_headers(mock_company):
-    """member 역할 인증 헤더"""
+    """member 역할 인증 헤더 (store에 멤버십 등록)"""
     from src.core.security import create_access_token
     user_id = str(uuid4())
     token = create_access_token(
         user_id,
         extra_data={"company_id": mock_company.id, "role": "member"}
     )
+    # store에 멤버십 등록
+    try:
+        from src.services.company_service import _register_member
+        from tests.conftest import MockCompanyMember
+        member = MockCompanyMember(
+            company_id=mock_company.id,
+            user_id=user_id,
+            role="member",
+        )
+        _register_member(member)
+    except ImportError:
+        pass
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -493,10 +553,16 @@ class TestUpdateCompanyAPI:
         """
         # Arrange
         from src.core.security import create_access_token
+        from src.services.company_service import _register_member
+        from tests.conftest import MockCompanyMember
+        admin_user_id = str(uuid4())
         admin_token = create_access_token(
-            str(uuid4()),
+            admin_user_id,
             extra_data={"company_id": mock_company.id, "role": "admin"}
         )
+        # store에 admin 멤버십 등록
+        member = MockCompanyMember(company_id=mock_company.id, user_id=admin_user_id, role="admin")
+        _register_member(member)
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
         update_data = {"name": "admin이 수정한 회사"}
@@ -565,21 +631,34 @@ class TestUpdateCompanyAPI:
         assert data["error"]["code"] == "PERMISSION_001"
 
     @pytest.mark.asyncio
-    async def test_IT24_존재하지_않는_회사_404(self, company_client, auth_headers):
+    async def test_IT24_존재하지_않는_회사_404(self, company_client):
         """
-        Given: 잘못된 UUID (존재하지 않는 회사)
-        When: PUT /api/v1/companies/{잘못된_UUID}
+        Given: 존재하지 않는 회사에 멤버십이 있는 사용자
+        When: PUT /api/v1/companies/{존재하지_않는_id}
         Then: 404 Not Found, COMPANY_001 에러
         """
-        # Arrange
+        # Arrange: 존재하지 않는 회사에 멤버십을 가진 사용자
+        from src.core.security import create_access_token
+        from src.services.company_service import _register_member
+        from tests.conftest import MockCompanyMember
         non_existent_id = str(uuid4())
+        user_id = str(uuid4())
+        token = create_access_token(
+            user_id,
+            extra_data={"company_id": non_existent_id, "role": "owner"}
+        )
+        # 멤버십을 store에 등록 (그러나 회사는 등록하지 않음)
+        member = MockCompanyMember(company_id=non_existent_id, user_id=user_id, role="owner")
+        _register_member(member)
+        headers_with_member = {"Authorization": f"Bearer {token}"}
+
         update_data = {"name": "테스트"}
 
         # Act
         response = await company_client.put(
             f"/api/v1/companies/{non_existent_id}",
             json=update_data,
-            headers=auth_headers,
+            headers=headers_with_member,
         )
 
         # Assert
@@ -1165,7 +1244,13 @@ class TestMemberAPI:
         When: POST /api/v1/companies/{id}/members
         Then: 201 Created, CompanyMember 생성
         """
-        # Arrange
+        # Arrange: 초대할 사용자를 store에 등록
+        from src.services.company_service import _register_user
+        from tests.conftest import MockUser
+        target_user = MockUser(email="newmember@test.com", name="신규멤버")
+        target_user.company_id = None
+        _register_user(target_user)
+
         invite_data = {
             "email": "newmember@test.com",
             "role": "member",
@@ -1192,12 +1277,22 @@ class TestMemberAPI:
         When: POST /api/v1/companies/{id}/members
         Then: 201 Created
         """
-        # Arrange
+        # Arrange: 초대할 사용자를 store에 등록
+        from src.services.company_service import _register_user, _register_member
+        from tests.conftest import MockUser, MockCompanyMember
+        target_user = MockUser(email="anothermember@test.com", name="또다른멤버")
+        target_user.company_id = None
+        _register_user(target_user)
+
         from src.core.security import create_access_token
+        admin_user_id = str(uuid4())
         admin_token = create_access_token(
-            str(uuid4()),
+            admin_user_id,
             extra_data={"company_id": mock_company.id, "role": "admin"}
         )
+        # admin 멤버십 등록
+        member = MockCompanyMember(company_id=mock_company.id, user_id=admin_user_id, role="admin")
+        _register_member(member)
         admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
         invite_data = {
@@ -1282,7 +1377,13 @@ class TestMemberAPI:
         When: POST /api/v1/companies/{id}/members
         Then: 409 Conflict, COMPANY_009 에러
         """
-        # Arrange
+        # Arrange: 초대할 사용자를 store에 등록
+        from src.services.company_service import _register_user
+        from tests.conftest import MockUser
+        target_user = MockUser(email="existingmember@test.com", name="기존멤버")
+        target_user.company_id = None
+        _register_user(target_user)
+
         invite_data = {
             "email": "existingmember@test.com",
             "role": "member",
@@ -1317,7 +1418,13 @@ class TestMemberAPI:
         When: POST /api/v1/companies/{id}/members
         Then: 409 Conflict, COMPANY_010 에러
         """
-        # Arrange
+        # Arrange: 다른 회사에 소속된 사용자를 store에 등록
+        from src.services.company_service import _register_user
+        from tests.conftest import MockUser
+        target_user = MockUser(email="othercompanymember@test.com", name="타회사멤버")
+        target_user.company_id = str(uuid4())  # 다른 회사 ID
+        _register_user(target_user)
+
         invite_data = {
             "email": "othercompanymember@test.com",
             "role": "member",
@@ -1405,7 +1512,7 @@ class TestCompanyInputBoundaries:
         """
         # Arrange
         data = {
-            "businessNumber": "1234567890",
+            "businessNumber": "1234567891",
             "name": "가" * 200,  # 200자
             "scale": "small",
         }
@@ -1427,7 +1534,7 @@ class TestCompanyInputBoundaries:
         """
         # Arrange
         data = {
-            "businessNumber": "1234567890",
+            "businessNumber": "1234567891",
             "name": "가" * 201,  # 201자 - 초과
             "scale": "small",
         }
