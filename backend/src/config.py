@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     # Anthropic Claude
     anthropic_api_key: str = ""
 
+    # 나라장터 API (F-01)
+    nara_api_key: str = ""  # 환경변수: NARA_API_KEY
+    nara_api_base_url: str = "https://apis.data.go.kr/1230000/BidPublicInfoService04"
+
+    # 스케줄러 (F-01)
+    scheduler_enabled: bool = True  # 테스트 시 비활성화
+    collection_schedule_hours: str = "6,12,18"  # KST 수집 시각
+
+    # 수집 설정 (F-01)
+    collection_retry_max: int = 3
+    collection_retry_base_delay: float = 2.0
+    collection_page_size: int = 100
+    collection_initial_days: int = 7  # 초기 수집 범위 (일)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

@@ -1,4 +1,5 @@
 """FastAPI 애플리케이션 메인"""
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,15 +9,37 @@ from src.api.deps import close_redis
 from src.config import get_settings
 from src.api.v1.router import api_router
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 라이프사이클 관리"""
-    # 시작 시 실행
+    # 스케줄러 시작 (설정에서 활성화된 경우)
+    scheduler = None
+    if settings.scheduler_enabled:
+        try:
+            from src.scheduler import create_scheduler
+            scheduler = create_scheduler()
+            scheduler.start()
+            app.state.scheduler = scheduler
+            logger.info("[APScheduler] 공고 수집 스케줄러 시작됨")
+        except ImportError as e:
+            logger.warning(f"[APScheduler] 스케줄러 초기화 실패 (apscheduler 미설치): {e}")
+        except Exception as e:
+            logger.warning(f"[APScheduler] 스케줄러 시작 오류: {e}")
+
     yield
-    # 종료 시 실행
+
+    # 종료 시 정리
+    if scheduler is not None:
+        try:
+            scheduler.shutdown(wait=False)
+            logger.info("[APScheduler] 스케줄러 종료됨")
+        except Exception as e:
+            logger.warning(f"[APScheduler] 스케줄러 종료 오류: {e}")
+
     await close_redis()
 
 

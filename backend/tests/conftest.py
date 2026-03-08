@@ -22,6 +22,13 @@ class MockApp(FastAPI):
         async def root():
             return {"message": "Mock API"}
 
+        # bids 라우터 포함 (F-01 통합 테스트용 — 501 mock 라우트보다 먼저 등록)
+        try:
+            from src.api.v1.bids import router as bids_router
+            self.include_router(bids_router, prefix="/api/v1/bids")
+        except ImportError:
+            pass
+
         @self.post("/api/v1/auth/register")
         async def mock_register(request: Request):
             return JSONResponse(
@@ -1025,6 +1032,61 @@ def reset_bid_store():
         _reset_store()
     except (ImportError, AttributeError):
         pass
+
+    # 통합 테스트에서 SAMPLE_BID_ID가 _SAMPLE_BIDS에 등록되도록 초기화
+    try:
+        from tests.integration.test_bid_api import SAMPLE_BID_ID
+        from src.api.v1.bids import _SAMPLE_BIDS, _SAMPLE_MATCHES
+        from datetime import datetime, timezone
+        if SAMPLE_BID_ID not in _SAMPLE_BIDS:
+            _SAMPLE_BIDS[SAMPLE_BID_ID] = {
+                "id": SAMPLE_BID_ID,
+                "bidNumber": "20260308999-00",
+                "title": "2026년 테스트 공고",
+                "description": "통합 테스트용 공고",
+                "organization": "테스트기관",
+                "region": "서울",
+                "category": "정보화",
+                "bidType": "일반경쟁",
+                "contractMethod": "적격심사",
+                "budget": 300000000,
+                "estimatedPrice": 270000000,
+                "announcementDate": "2026-03-08",
+                "deadline": "2026-03-22T17:00:00+00:00",
+                "openDate": "2026-03-23T10:00:00+00:00",
+                "status": "open",
+                "scoringCriteria": {"technical": 80, "price": 20},
+                "attachments": [
+                    {
+                        "id": "att-sample-001",
+                        "filename": "제안요청서.pdf",
+                        "fileType": "PDF",
+                        "fileUrl": "https://nara.go.kr/files/sample_rfp.pdf",
+                        "hasExtractedText": True,
+                    }
+                ],
+                "crawledAt": "2026-03-08T06:00:00+00:00",
+                "createdAt": "2026-03-08T06:00:05+00:00",
+            }
+        match_key = f"user-owner-001:{SAMPLE_BID_ID}"
+        if match_key not in _SAMPLE_MATCHES:
+            _SAMPLE_MATCHES[match_key] = {
+                "id": f"match-sample-001",
+                "bidId": SAMPLE_BID_ID,
+                "userId": "user-owner-001",
+                "suitabilityScore": 78.5,
+                "competitionScore": 0,
+                "capabilityScore": 0,
+                "marketScore": 0,
+                "totalScore": 78.5,
+                "recommendation": "recommended",
+                "recommendationReason": "높은 적합도를 보입니다.",
+                "isNotified": True,
+                "analyzedAt": "2026-03-08T06:05:00+00:00",
+            }
+    except (ImportError, AttributeError):
+        pass
+
     yield
     try:
         from src.services.bid_collector_service import _reset_store
