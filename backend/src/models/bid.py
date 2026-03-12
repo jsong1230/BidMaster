@@ -28,6 +28,7 @@ class Bid(Base):
     open_date = Column(DateTime, nullable=True)
     status = Column(String(20), nullable=False, default="open")
     estimated_price = Column(Numeric(15, 0), nullable=True)
+    requirements = Column(JSONB, nullable=True)  # 요구사항 목록
     scoring_criteria = Column(JSONB, nullable=True)
     crawled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

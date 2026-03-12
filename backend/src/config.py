@@ -45,6 +45,33 @@ class Settings(BaseSettings):
     collection_page_size: int = 100
     collection_initial_days: int = 7  # 초기 수집 범위 (일)
 
+    # 이메일 설정 (F-10)
+    smtp_host: str = ""  # 환경변수: SMTP_HOST
+    smtp_port: int = 587  # 환경변수: SMTP_PORT
+    smtp_user: str = ""  # 환경변수: SMTP_USER
+    smtp_password: str = ""  # 환경변수: SMTP_PASSWORD
+    smtp_from_email: str = "noreply@bidmaster.kr"
+    smtp_from_name: str = "BidMaster"
+    email_enabled: bool = True  # 이메일 발송 활성화 여부
+
+    # 카카오 알림톡 설정 (F-10, 선택사항)
+    kakao_alimtalk_enabled: bool = False  # 기본 비활성
+    kakao_alimtalk_api_key: str = ""
+    kakao_alimtalk_sender_key: str = ""
+
+    # 알림 스케줄러 설정 (F-10)
+    deadline_notification_hour: int = 9  # KST 마감 임박 알림 시각
+    deadline_notification_days: str = "3,1"  # D-3, D-1
+
+    # 프론트엔드 URL (F-10 이메일 링크용)
+    frontend_url: str = "http://localhost:3000"
+
+    # GLM API 설정 (F-03 제안서 생성)
+    glm_api_key: str = ""  # 환경변수: GLM_API_KEY
+    glm_model: str = "glm-4-plus"  # 기본 모델
+    glm_max_tokens: int = 4096
+    glm_temperature: float = 0.7
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

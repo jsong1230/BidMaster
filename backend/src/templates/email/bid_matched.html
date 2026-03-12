@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}새로운 매칭 공고 알림{% endblock %}
+
+{% block content %}
+<h2>🎯 새로운 매칭 공고</h2>
+
+<p>회사에 적합한 새로운 입찰 공고가 매칭되었습니다.</p>
+
+<div class="info-box">
+    <p><strong>공고명:</strong> {{ bid_title }}</p>
+    <p><strong>적합도 점수:</strong> <span class="score">{{ score }}점</span></p>
+    {% if recommendation == "recommended" %}
+    <p><span class="badge badge-success">추천</span></p>
+    {% elif recommendation == "consider" %}
+    <p><span class="badge badge-warning">검토 필요</span></p>
+    {% endif %}
+</div>
+
+<p>자세한 내용은 BidMaster에서 확인해주세요.</p>
+
+<p style="margin-top: 30px;">
+    <a href="{{ app_url }}/bids/{{ bid_id }}" class="btn">공고 상세 보기</a>
+</p>
+{% endblock %}

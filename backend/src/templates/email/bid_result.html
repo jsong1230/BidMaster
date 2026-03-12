@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}낙찰 결과 알림{% endblock %}
+
+{% block content %}
+{% if is_winner %}
+<h2>🎉 낙찰 축하드립니다!</h2>
+
+<p>입찰에 낙찰되었습니다.</p>
+
+<div class="info-box">
+    <p><strong>공고명:</strong> {{ bid_title }}</p>
+    <p><span class="badge badge-success">낙찰</span></p>
+    {% if winning_price %}
+    <p><strong>낙찰 금액:</strong> {{ winning_price|format_price }}원</p>
+    {% endif %}
+</div>
+
+<p>축하드립니다! 낙찰된 프로젝트의 진행 상황을 BidMaster에서 관리해보세요.</p>
+{% else %}
+<h2>아쉽게도 낙찰되지 않았습니다</h2>
+
+<p>이번 입찰에서는 낙찰되지 않았습니다.</p>
+
+<div class="info-box">
+    <p><strong>공고명:</strong> {{ bid_title }}</p>
+    <p><span class="badge badge-danger">미낙찰</span></p>
+</div>
+
+<p>다음 기회를 위해 더 좋은 매칭 공고를 찾아드리겠습니다.</p>
+{% endif %}
+
+<p style="margin-top: 30px;">
+    <a href="{{ app_url }}/bids/{{ bid_id }}" class="btn">공고 상세 보기</a>
+</p>
+{% endblock %}

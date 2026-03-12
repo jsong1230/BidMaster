@@ -1,0 +1,35 @@
+다음 공고에 대한 기술 제안서를 작성하세요.
+
+## 공고 정보
+- 공고명: {{ proposal_title }}
+- 발주기관: {{ bid_organization }}
+- 사업 예산: {{ bid_budget }}
+
+## 요구사항
+{% for req in bid_requirements %}
+- {{ req }}
+{% endfor %}
+
+## 회사 정보
+- 회사명: {{ company_name }}
+- 사업 분야: {{ company_business_areas|join(', ') }}
+- 보유 인증: {{ company_certifications|join(', ') }}
+- 회사 소개: {{ company_description }}
+
+---
+
+다음 형식으로 작성하세요:
+
+### 1. 기술적 접근 방법
+(전체적인 기술적 접근 방안)
+
+### 2. 핵심 기술 요소
+(적용할 핵심 기술과 솔루션)
+
+### 3. 기술 아키텍처
+(시스템 구성 및 아키텍처)
+
+### 4. 기술적 우수성
+(차별화된 기술적 우수성)
+
+한글로 2000자 내외로 작성하세요.

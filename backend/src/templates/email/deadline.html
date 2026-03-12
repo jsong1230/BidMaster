@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}마감 임박 알림{% endblock %}
+
+{% block content %}
+<h2>⏰ 마감 임박 알림</h2>
+
+<p>참여 중인 입찰 공고가 곧 마감됩니다.</p>
+
+<div class="info-box">
+    <p><strong>공고명:</strong> {{ bid_title }}</p>
+    <p><strong>마감일시:</strong> {{ deadline }}</p>
+    {% if days_left == 1 %}
+    <p><span class="badge badge-danger">D-1 (내일 마감)</span></p>
+    {% elif days_left == 3 %}
+    <p><span class="badge badge-warning">D-3 (3일 후 마감)</span></p>
+    {% else %}
+    <p><span class="badge badge-warning">D-{{ days_left }}</span></p>
+    {% endif %}
+</div>
+
+<p>제안서 제출 등 필요한 절차를 서둘러 완료해주세요.</p>
+
+<p style="margin-top: 30px;">
+    <a href="{{ app_url }}/bids/{{ bid_id }}" class="btn">공고 상세 보기</a>
+</p>
+{% endblock %}

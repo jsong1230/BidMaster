@@ -16,6 +16,7 @@ class UserBidMatch(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     bid_id = Column(PG_UUID(as_uuid=True), ForeignKey("bids.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="new")  # new, interested, participating, completed
     suitability_score = Column(Numeric(5, 2), nullable=True)
     competition_score = Column(Numeric(5, 2), nullable=True, default=0)
     capability_score = Column(Numeric(5, 2), nullable=True, default=0)
@@ -41,6 +42,7 @@ class UserBidMatch(Base):
         UniqueConstraint("user_id", "bid_id", name="idx_user_bid_matches_unique"),
         Index("idx_user_bid_matches_user_score", "user_id", "total_score"),
         Index("idx_user_bid_matches_bid", "bid_id"),
+        Index("idx_user_bid_matches_status", "status"),
     )
 
     def __repr__(self) -> str:

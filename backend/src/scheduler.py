@@ -77,6 +77,30 @@ async def scheduled_collect_bids() -> None:
         await release_collection_lock(redis)
 
 
+async def scheduled_deadline_notifications() -> None:
+    """
+    마감 임박 알림 스케줄러 작업 (F-10)
+
+    매일 09:00 KST에 실행:
+    1. D-3, D-1 마감 공고 조회
+    2. 참여 중인 사용자에게 알림 발송
+    """
+    from src.core.database import AsyncSessionLocal
+    from src.services.notification_service import NotificationService
+
+    logger.info("[스케줄러] 마감 임박 알림 작업 시작")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            service = NotificationService(db)
+            sent_count = await service.send_deadline_notifications()
+            logger.info(f"[스케줄러] 마감 임박 알림 완료: {sent_count}건 발송")
+            await db.commit()
+
+    except Exception as e:
+        logger.error(f"[스케줄러] 마감 임박 알림 오류: {e}")
+
+
 async def acquire_collection_lock(redis: "Any") -> bool:
     """수집 잠금 획득 (Redis SETNX)"""
     try:
@@ -105,6 +129,7 @@ def create_scheduler() -> "AsyncIOScheduler":
     scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
     if settings.scheduler_enabled:
+        # 공고 수집 스케줄
         scheduler.add_job(
             scheduled_collect_bids,
             CronTrigger(
@@ -119,6 +144,23 @@ def create_scheduler() -> "AsyncIOScheduler":
         )
         logger.info(
             f"[스케줄러] 공고 수집 스케줄 등록: {settings.collection_schedule_hours}시 KST"
+        )
+
+        # 마감 임박 알림 스케줄 (매일 09:00 KST)
+        scheduler.add_job(
+            scheduled_deadline_notifications,
+            CronTrigger(
+                hour=settings.deadline_notification_hour,
+                minute=0,
+                timezone="Asia/Seoul",
+            ),
+            id="deadline_notifications",
+            name="마감 임박 알림",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"[스케줄러] 마감 임박 알림 스케줄 등록: {settings.deadline_notification_hour}:00 KST"
         )
 
     return scheduler

@@ -1,0 +1,38 @@
+다음 공고에 대한 사업 개요를 작성하세요.
+
+## 공고 정보
+- 공고명: {{ proposal_title }}
+- 발주기관: {{ bid_organization }}
+- 사업 예산: {{ bid_budget }}
+- 마감일: {{ bid_deadline }}
+
+## 공고 내용
+{{ bid_description }}
+
+## 요구사항
+{% for req in bid_requirements %}
+- {{ req }}
+{% endfor %}
+
+## 회사 정보
+- 회사명: {{ company_name }}
+- 사업 분야: {{ company_business_areas|join(', ') }}
+- 주요 실적: {{ company_description }}
+
+---
+
+다음 형식으로 작성하세요:
+
+### 1. 사업의 목적
+(사업의 필요성과 목적을 명확히 기술)
+
+### 2. 사업 범위
+(사업의 대상과 범위 정의)
+
+### 3. 주요 내용
+(수행할 주요 업무 내용)
+
+### 4. 기대 효과
+(사업 완료 후 기대되는 효과)
+
+한글로 1000자 내외로 작성하세요.

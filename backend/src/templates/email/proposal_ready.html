@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}제안서 생성 완료 알림{% endblock %}
+
+{% block content %}
+<h2>📝 제안서 생성 완료</h2>
+
+<p>AI 제안서 생성이 완료되었습니다.</p>
+
+<div class="info-box">
+    <p><strong>제안서명:</strong> {{ proposal_title }}</p>
+    <p><strong>연관 공고:</strong> {{ bid_title }}</p>
+</div>
+
+<p>BidMaster에서 제안서를 확인하고, 필요한 부분을 수정한 후 제출해주세요.</p>
+
+<p style="margin-top: 30px;">
+    <a href="{{ app_url }}/proposals/{{ proposal_id }}" class="btn">제안서 보기</a>
+</p>
+{% endblock %}
