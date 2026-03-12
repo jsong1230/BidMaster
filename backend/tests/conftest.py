@@ -8,9 +8,62 @@ from httpx import AsyncClient, ASGITransport
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock
 
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import StaticPool
+
 # 임시 Mock 구현 - 구현 후 실제 모듈로 교체
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+
+
+# 테스트용 인메모리 SQLite 엔진
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    """이벤트 루프 정책"""
+    import asyncio
+    return asyncio.DefaultEventLoopPolicy()
+
+
+@pytest.fixture(scope="function")
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    테스트용 데이터베이스 세션 Fixture
+    각 테스트마다 격리된 인메모리 DB 사용
+    """
+    from src.core.database import Base
+
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False,
+    )
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    async with async_session_maker() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    await engine.dispose()
 
 class MockApp(FastAPI):
     """임시 FastAPI 앱 Mock"""
