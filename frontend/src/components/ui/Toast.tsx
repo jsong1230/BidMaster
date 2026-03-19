@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-type ToastType = 'success' | 'error';
+type ToastType = 'success' | 'error' | 'info';
 
 interface ToastMessage {
   id: string;
@@ -24,12 +24,19 @@ export function showToast(message: string, type: ToastType = 'success') {
   toastList = [...toastList, { id, type, message }];
   notify(toastListeners, toastList);
 
-  const duration = type === 'success' ? 2000 : 4000;
+  const duration = type === 'success' ? 2000 : 3000;
   setTimeout(() => {
     toastList = toastList.filter((t) => t.id !== id);
     notify(toastListeners, toastList);
   }, duration);
 }
+
+// toast.success(), toast.error(), toast.info() 형태로 사용하기 위한 편의 객체
+export const toast = {
+  success: (message: string) => showToast(message, 'success'),
+  error: (message: string) => showToast(message, 'error'),
+  info: (message: string) => showToast(message, 'info'),
+};
 
 export function ToastContainer() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -53,12 +60,18 @@ export function ToastContainer() {
             ${
               toast.type === 'success'
                 ? 'bg-green-50 border-green-500 text-green-700'
-                : 'bg-red-50 border-red-500 text-red-700'
+                : toast.type === 'info'
+                  ? 'bg-blue-50 border-blue-500 text-blue-700'
+                  : 'bg-red-50 border-red-500 text-red-700'
             }`}
         >
           {toast.type === 'success' ? (
             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          ) : toast.type === 'info' ? (
+            <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
           ) : (
             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">

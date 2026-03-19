@@ -62,6 +62,19 @@ const bidItems: NavItem[] = [
   },
 ];
 
+/** 제안서 섹션 메뉴 항목 */
+const proposalItems: NavItem[] = [
+  {
+    href: '/proposals',
+    label: '제안서 관리',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+];
+
 const settingsItems: NavItem[] = [
   {
     href: '/settings/company',
@@ -135,6 +148,18 @@ export default function Sidebar() {
               ),
             }}
           />
+        </div>
+
+        {/* 제안서 섹션 */}
+        <div className="pt-3">
+          <p className="px-3 pb-1 text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+            제안서
+          </p>
+          <div className="space-y-1">
+            {proposalItems.map((item) => (
+              <NavLink key={item.href} item={item} />
+            ))}
+          </div>
         </div>
 
         {/* 공고 섹션 */}

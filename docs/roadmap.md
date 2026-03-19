@@ -12,10 +12,10 @@
 - F-04: 낙찰가 예측 및 투찰 전략 ✅
 
 ### M2: 제안서/대시보드/알림 🔄 진행 중
-- F-03: 제안서 AI 초안 생성 ✅ (백엔드 완료)
-- F-06: 입찰 현황 대시보드 ✅ (백엔드 완료)
-- F-10: 알림 시스템 ✅ (백엔드 완료)
-- F-05: 제안서 편집기 ⏳ (프론트엔드 대기)
+- F-03: 제안서 AI 초안 생성 ✅ 완료
+- F-06: 입찰 현황 대시보드 ✅ 완료
+- F-10: 알림 시스템 ✅ 완료
+- F-05: 제안서 편집기 ⏳ (다음 작업)
 - F-09: 결제 및 구독 관리 ⏳ (계획 중)
 
 ### M3~M5: 대기 중
@@ -27,9 +27,9 @@
 
 ---
 
-## F-03 제안서 AI 초안 생성
+## F-03 제안서 AI 초안 생성 ✅ 완료
 
-### 구현 완료 항목
+### 구현 완료 항목 (백엔드)
 | 파일 | 설명 |
 |------|------|
 | `models/proposal.py` | Proposal 모델 |
@@ -43,20 +43,36 @@
 | `alembic/versions/002_add_f03_proposals.py` | DB 마이그레이션 |
 | `tests/f03/test_proposal_service.py` | 테스트 코드 |
 
+### 구현 완료 항목 (프론트엔드)
+| 파일 | 설명 |
+|------|------|
+| `app/(main)/(proposals)/proposals/page.tsx` | 제안서 목록 페이지 |
+| `app/(main)/(proposals)/proposals/new/page.tsx` | 제안서 생성 페이지 |
+| `app/(main)/(proposals)/proposals/[id]/page.tsx` | 제안서 상세 페이지 |
+| `app/(main)/(proposals)/proposals/[id]/generate/page.tsx` | AI 생성 진행 페이지 |
+| `components/proposals/ProposalListPage.tsx` | 제안서 목록 컴포넌트 |
+| `components/proposals/ProposalCreatePage.tsx` | 제안서 생성 컴포넌트 |
+| `components/proposals/ProposalDetailPage.tsx` | 제안서 상세 컴포넌트 |
+| `components/proposals/ProposalGeneratePage.tsx` | AI 생성 진행 컴포넌트 |
+| `components/proposals/ProposalHeader.tsx` | 제안서 헤더 컴포넌트 |
+| `components/proposals/ProposalSection.tsx` | 섹션 렌더링 컴포넌트 |
+| `components/proposals/GenerationProgress.tsx` | 생성 진행률 컴포넌트 |
+| `components/proposals/SectionProgressList.tsx` | 섹션 진행 상황 컴포넌트 |
+| `components/proposals/BidSelectModal.tsx` | 공고 선택 모달 |
+| `components/proposals/SectionSelector.tsx` | 섹션 선택 컴포넌트 |
+| `components/proposals/RegenerateModal.tsx` | 섹션 재생성 모달 |
+| `components/proposals/DownloadButton.tsx` | 다운로드 버튼 컴포넌트 |
+| `lib/api/proposal.ts` | 제안서 API 클라이언트 |
+| `stores/proposalStore.ts` | Zustand 상태 관리 |
+| `types/proposal.ts` | TypeScript 타입 정의 |
+
 ### 기술 스택
 - **AI 모델**: GLM API (`zhipuai>=2.0.0`)
 - **스트리밍**: SSE (Server-Sent Events)
 - **버전 관리**: 제안서 버전 생성/복원
 - **상태 전환**: draft → generating → ready → submitted
 - **섹션**: overview, technical, methodology, schedule, organization, budget
-
-### 코드 리뷰 완료 사항 (2026-03-12)
-| 항목 | 상태 | 설명 |
-|------|------|------|
-| `word_count` | ✅ 적절 | 한국어 텍스트는 글자 수(`len()`) 사용이 적절 |
-| `section_metadata` | ✅ 해결 | `mapped_column("metadata", ...)`로 SQLAlchemy 충돌 방지 |
-| `bid.requirements` | ✅ 해결 | `bid.requirements or []`로 null 체크 구현됨 |
-| `bid.deadline` | ✅ 해결 | `if bid.deadline else ""`로 null 체크 구현됨 |
+- **프론트엔드**: Next.js 14 App Router, Zustand, ReactMarkdown
 
 ### API 엔드포인트
 - `GET /api/v1/proposals` - 제안서 목록 조회
@@ -65,24 +81,22 @@
 - `PATCH /api/v1/proposals/{id}` - 제안서 수정
 - `DELETE /api/v1/proposals/{id}` - 제안서 삭제
 - `POST /api/v1/proposals/{id}/generate` - AI 생성 (SSE)
+- `GET /api/v1/proposals/{id}/generate/stream` - SSE 스트림
 - `PATCH /api/v1/proposals/{id}/sections/{key}` - 섹션 수정
 - `POST /api/v1/proposals/{id}/sections/{key}/regenerate` - 섹션 재생성
+- `GET /api/v1/proposals/{id}/download` - 다운로드 (DOCX/PDF)
 - `POST /api/v1/proposals/{id}/versions` - 버전 생성
 - `POST /api/v1/proposals/{id}/versions/{n}/restore` - 버전 복원
 - `POST /api/v1/proposals/{id}/submit` - 제안서 제출
-- `POST /api/v1/proposals/{id}/export` - 내보내기 (스텁)
-
-### 내보내기 (스텁)
-PDF/DOCX/HWP 내보내기 기능은 추후 구현 예정
 
 ---
 
-## F-06 입찰 현황 대시보드
+## F-06 입찰 현황 대시보드 ✅ 완료
 
-백엔드 완료, 프론트엔드 대기
+백엔드 및 프론트엔드 완료 (2026-03-19)
 
 ---
 
-## F-10 알림 시스템
+## F-10 알림 시스템 ✅ 완료
 
-백엔드 완료, 프론트엔드 대기
+백엔드 및 프론트엔드 완료 (2026-03-19)
