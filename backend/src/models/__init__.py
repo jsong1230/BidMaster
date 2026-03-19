@@ -13,6 +13,7 @@ from src.models.notification_setting import NotificationSetting
 from src.models.proposal import Proposal
 from src.models.proposal_section import ProposalSection
 from src.models.proposal_version import ProposalVersion
+from src.models.user_bid_tracking import UserBidTracking
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "Proposal",
     "ProposalSection",
     "ProposalVersion",
+    "UserBidTracking",
 ]

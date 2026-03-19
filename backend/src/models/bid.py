@@ -42,6 +42,7 @@ class Bid(Base):
     # 관계
     attachments = relationship("BidAttachment", back_populates="bid", cascade="all, delete-orphan")
     user_matches = relationship("UserBidMatch", back_populates="bid", cascade="all, delete-orphan")
+    trackings = relationship("UserBidTracking", back_populates="bid", cascade="all, delete-orphan")
 
     # 인덱스 (성능 최적화)
     __table_args__ = (

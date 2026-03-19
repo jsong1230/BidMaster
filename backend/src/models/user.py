@@ -29,6 +29,7 @@ class User(Base):
 
     # 관계
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    bid_trackings = relationship("UserBidTracking", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.email}>"

@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -19,14 +20,17 @@ VALID_BID_STATUS = {"open", "closed", "awarded", "cancelled"}
 VALID_SORT_BY = {"deadline", "announcementDate", "budget", "createdAt"}
 VALID_SORT_ORDER = {"asc", "desc"}
 VALID_RECOMMENDATION = {"strongly_recommended", "recommended", "neutral", "not_recommended"}
+VALID_TRACKING_STATUSES = {"interested", "participating", "submitted", "won", "lost"}
 
 # ----------------------------------------------------------------
-# 인메모리 스토어 (공고 / 매칭 결과)
+# 인메모리 스토어 (공고 / 매칭 결과 / 추적)
 # ----------------------------------------------------------------
 
 # 샘플 공고 데이터 (통합 테스트용)
 _SAMPLE_BIDS: dict[str, dict[str, Any]] = {}
 _SAMPLE_MATCHES: dict[str, dict[str, Any]] = {}
+# 입찰 추적 저장소 (key: "{user_id}:{bid_id}")
+_TRACKING_STORE: dict[str, dict[str, Any]] = {}
 
 # Redis 잠금 시뮬레이션
 _collection_lock_active: bool = False
@@ -371,6 +375,80 @@ async def list_matched_bids(request: Request) -> JSONResponse:
 
 
 # ----------------------------------------------------------------
+# GET /api/v1/bids/wins — 낙찰 이력 조회 (F-06)
+# ※ /{bid_id} 패턴보다 먼저 등록해야 충돌 방지
+# ----------------------------------------------------------------
+
+@router.get("/wins")
+async def get_win_history_early(request: Request) -> JSONResponse:
+    """낙찰 이력 조회 (is_winner=True인 추적 레코드)"""
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    user_id = str(user.get("sub", ""))
+    params = dict(request.query_params)
+    page, page_size = _parse_page_params(params)
+
+    start_date_str = params.get("startDate")
+    end_date_str = params.get("endDate")
+    sort_by = params.get("sortBy", "resultAt")
+    sort_order = params.get("sortOrder", "desc")
+
+    won_items = [
+        v for k, v in _TRACKING_STORE.items()
+        if k.startswith(f"{user_id}:") and v.get("isWinner") is True
+    ]
+
+    if start_date_str:
+        try:
+            from datetime import date as _date
+            start_dt = datetime.fromisoformat(start_date_str)
+            won_items = [
+                it for it in won_items
+                if it.get("resultAt") and datetime.fromisoformat(it["resultAt"]) >= start_dt
+            ]
+        except ValueError:
+            pass
+
+    if end_date_str:
+        try:
+            end_dt = datetime.fromisoformat(end_date_str)
+            won_items = [
+                it for it in won_items
+                if it.get("resultAt") and datetime.fromisoformat(it["resultAt"]) <= end_dt
+            ]
+        except ValueError:
+            pass
+
+    reverse = (sort_order == "desc")
+    if sort_by == "myBidPrice":
+        won_items = sorted(won_items, key=lambda x: x.get("myBidPrice") or 0, reverse=reverse)
+    else:
+        won_items = sorted(won_items, key=lambda x: x.get("resultAt") or "", reverse=reverse)
+
+    total = len(won_items)
+    offset = (page - 1) * page_size
+    page_items = won_items[offset:offset + page_size]
+    total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "data": {"items": page_items},
+            "meta": {
+                "page": page,
+                "pageSize": page_size,
+                "total": total,
+                "totalPages": total_pages,
+            },
+        },
+    )
+
+
+# ----------------------------------------------------------------
 # GET /api/v1/bids/{bid_id} — 공고 상세 조회
 # ----------------------------------------------------------------
 
@@ -650,3 +728,143 @@ async def get_bid_scoring(bid_id: str, request: Request) -> JSONResponse:
     except Exception as e:
         logger.error(f"스코어링 오류: {e}")
         return error_response("SCORING_001", "스코어링 분석 중 오류가 발생했습니다.", 500)
+
+
+# ----------------------------------------------------------------
+# POST /api/v1/bids/{bid_id}/tracking — 추적 생성/업데이트 (F-06)
+# ----------------------------------------------------------------
+
+@router.post("/{bid_id}/tracking")
+async def upsert_tracking(bid_id: str, request: Request) -> JSONResponse:
+    """입찰 추적 생성 또는 업데이트"""
+    # UUID 형식 검사
+    try:
+        import uuid as _uuid
+        _uuid.UUID(bid_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {"code": "VALIDATION_001", "message": "유효하지 않은 공고 ID 형식입니다."},
+            },
+        )
+
+    # 인증
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    # 공고 존재 여부 확인
+    bid = _SAMPLE_BIDS.get(bid_id)
+    if bid is None:
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
+
+    # 요청 본문 파싱
+    try:
+        body = await request.json()
+    except Exception:
+        return error_response("VALIDATION_001", "요청 본문이 유효하지 않습니다.", 400)
+
+    # status 검증
+    status = body.get("status")
+    if not status:
+        return error_response("VALIDATION_001", "status는 필수 입력값입니다.", 400)
+    if status not in VALID_TRACKING_STATUSES:
+        return error_response(
+            "DASHBOARD_003",
+            f"유효하지 않은 추적 상태입니다: {status}",
+            400,
+        )
+
+    user_id = str(user.get("sub", ""))
+    track_key = f"{user_id}:{bid_id}"
+
+    now = datetime.now(timezone.utc).isoformat()
+    existing = _TRACKING_STORE.get(track_key)
+    is_created = existing is None
+
+    if is_created:
+        tracking_id = str(uuid4())
+        tracking = {
+            "id": tracking_id,
+            "bidId": bid_id,
+            "userId": user_id,
+            "status": status,
+            "myBidPrice": body.get("myBidPrice"),
+            "isWinner": None,
+            "submittedAt": None,
+            "resultAt": None,
+            "notes": body.get("notes"),
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    else:
+        tracking = dict(existing)
+        tracking["status"] = status
+        if "myBidPrice" in body:
+            tracking["myBidPrice"] = body["myBidPrice"]
+        if "notes" in body:
+            tracking["notes"] = body["notes"]
+        tracking["updatedAt"] = now
+
+    # 상태에 따른 자동 필드 설정
+    if status == "submitted":
+        if not tracking.get("submittedAt"):
+            tracking["submittedAt"] = now
+    elif status == "won":
+        tracking["isWinner"] = True
+        tracking["resultAt"] = now
+    elif status == "lost":
+        tracking["isWinner"] = False
+        tracking["resultAt"] = now
+
+    _TRACKING_STORE[track_key] = tracking
+
+    status_code = 201 if is_created else 200
+    return JSONResponse(
+        status_code=status_code,
+        content={"success": True, "data": tracking},
+    )
+
+
+# ----------------------------------------------------------------
+# GET /api/v1/bids/{bid_id}/tracking — 추적 상태 조회 (F-06)
+# ----------------------------------------------------------------
+
+@router.get("/{bid_id}/tracking")
+async def get_tracking(bid_id: str, request: Request) -> JSONResponse:
+    """특정 공고에 대한 현재 사용자의 추적 상태 조회"""
+    # UUID 형식 검사
+    try:
+        import uuid as _uuid
+        _uuid.UUID(bid_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {"code": "VALIDATION_001", "message": "유효하지 않은 공고 ID 형식입니다."},
+            },
+        )
+
+    # 인증
+    try:
+        user = _get_current_user(request)
+    except AuthError as e:
+        return error_response(e.code, e.message, e.status_code)
+
+    # 공고 존재 여부 확인
+    bid = _SAMPLE_BIDS.get(bid_id)
+    if bid is None:
+        return error_response("BID_001", "공고를 찾을 수 없습니다.", 404)
+
+    user_id = str(user.get("sub", ""))
+    track_key = f"{user_id}:{bid_id}"
+    tracking = _TRACKING_STORE.get(track_key)
+
+    if tracking is None:
+        return error_response("DASHBOARD_001", "추적 정보를 찾을 수 없습니다.", 404)
+
+    return success_response(data=tracking)

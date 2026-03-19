@@ -44,8 +44,12 @@ class Company(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # 관계
-    user: Mapped["User"] = relationship("User", backref="companies")
+    # 관계 (foreign_keys 명시로 모호성 제거)
+    user: Mapped["User"] = relationship(
+        "User",
+        foreign_keys="[Company.user_id]",
+        backref="companies",
+    )
 
     __table_args__ = (
         Index("idx_companies_user", "user_id"),
