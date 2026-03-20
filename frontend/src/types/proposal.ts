@@ -192,3 +192,71 @@ export interface DownloadResponse {
   contentType: string;
   data: Blob;
 }
+
+// ========== F-05 제안서 편집기 ==========
+
+/** 평가 기준 체크리스트 항목 */
+export interface ChecklistItem {
+  checked: boolean;
+  weight: number;
+  [key: string]: unknown;
+}
+
+/** 평가 기준 체크리스트 */
+export interface EvaluationChecklist {
+  [key: string]: ChecklistItem;
+}
+
+/** 자동 저장 요청 */
+export interface AutoSaveRequest {
+  sections: Array<{
+    sectionKey: string;
+    content: string;
+    wordCount: number;
+  }>;
+}
+
+/** 자동 저장 응답 */
+export interface AutoSaveResponse {
+  savedAt: string;
+  wordCount: number;
+}
+
+/** 검증 경고 */
+export interface ValidationWarning {
+  type: 'required_field' | 'page_limit' | 'checklist_incomplete';
+  section?: string;
+  current?: number;
+  limit?: number;
+  message: string;
+}
+
+/** 섹션 통계 */
+export interface SectionStats {
+  sectionKey: string;
+  wordCount: number;
+  isEmpty: boolean;
+}
+
+/** 검증 응답 */
+export interface ValidationResponse {
+  isValid: boolean;
+  warnings: ValidationWarning[];
+  stats: {
+    totalWordCount: number;
+    estimatedPages: number;
+    sectionStats: SectionStats[];
+  };
+}
+
+/** 평가 기준 체크리스트 업데이트 요청 */
+export interface ChecklistUpdateRequest {
+  checklist: EvaluationChecklist;
+}
+
+/** 평가 기준 체크리스트 업데이트 응답 */
+export interface ChecklistUpdateResponse {
+  checklist: EvaluationChecklist;
+  achievementRate: number;
+  updatedAt: string;
+}

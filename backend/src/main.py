@@ -2,12 +2,14 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from src.api.deps import close_redis
 from src.config import get_settings
 from src.api.v1.router import api_router
+from src.core.exceptions import AppException
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -60,6 +62,26 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+
+# ============================================================
+# 글로벌 예외 핸들러
+# ============================================================
+
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """애플리케이션 예외 핸들러"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+            },
+        },
+    )
 
 
 @app.get("/health")

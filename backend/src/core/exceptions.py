@@ -18,7 +18,7 @@ class ValidationError(AppException):
     """유효성 검사 에러"""
 
     def __init__(self, code: str = "VALIDATION_001", message: str = "유효하지 않은 요청입니다."):
-        super().__init__(code=code, message=message, status_code=422)
+        super().__init__(code=code, message=message, status_code=400)
 
 
 class NotFoundError(AppException):

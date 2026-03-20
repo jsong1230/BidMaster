@@ -268,3 +268,104 @@ class ExportResponse(BaseModel):
 PROPOSAL_STATUSES = ["draft", "generating", "ready", "submitted"]
 
 ALL_SECTION_KEYS = list(SECTION_DEFINITIONS.keys())
+
+
+# ============================================================
+# F-05 제안서 편집기 스키마
+# ============================================================
+
+
+class AutoSaveSectionItem(BaseModel):
+    """자동 저장 섹션 아이템"""
+
+    section_key: str = Field(..., alias="sectionKey", description="섹션 키")
+    content: str = Field(..., description="HTML 콘텐츠")
+    word_count: int | None = Field(None, alias="wordCount", description="단어 수")
+
+    model_config = {"populate_by_name": True}
+
+
+class AutoSaveRequest(BaseModel):
+    """자동 저장 요청 스키마"""
+
+    sections: list[AutoSaveSectionItem] = Field(..., description="저장할 섹션 목록")
+
+
+class AutoSaveResponse(BaseModel):
+    """자동 저장 응답 스키마"""
+
+    saved_at: datetime = Field(..., alias="savedAt", description="저장 시각")
+    word_count: int = Field(..., alias="wordCount", description="총 단어 수")
+
+    model_config = {"populate_by_name": True}
+
+
+class ValidationWarning(BaseModel):
+    """검증 경고"""
+
+    type: str = Field(..., description="경고 타입 (required_field, page_limit, evaluation_incomplete)")
+    section: str | None = Field(None, description="관련 섹션 키")
+    message: str = Field(..., description="경고 메시지")
+    current: int | None = Field(None, description="현재 값")
+    limit: int | None = Field(None, description="제한 값")
+
+
+class SectionStats(BaseModel):
+    """섹션 통계"""
+
+    section_key: str = Field(..., alias="sectionKey")
+    word_count: int = Field(..., alias="wordCount")
+    is_empty: bool = Field(..., alias="isEmpty")
+
+    model_config = {"populate_by_name": True}
+
+
+class ValidationStats(BaseModel):
+    """검증 통계"""
+
+    total_word_count: int = Field(..., alias="totalWordCount")
+    estimated_pages: int = Field(..., alias="estimatedPages")
+    section_stats: list[SectionStats] = Field(..., alias="sectionStats")
+
+    model_config = {"populate_by_name": True}
+
+
+class ValidationRequest(BaseModel):
+    """검증 요청 스키마"""
+
+    page_limit: int | None = Field(None, alias="pageLimit", description="페이지 제한")
+
+    model_config = {"populate_by_name": True}
+
+
+class ValidationResponse(BaseModel):
+    """검증 응답 스키마"""
+
+    is_valid: bool = Field(..., alias="isValid", description="검증 통과 여부")
+    warnings: list[ValidationWarning] = Field(default_factory=list, description="경고 목록")
+    stats: ValidationStats = Field(..., description="통계")
+
+    model_config = {"populate_by_name": True}
+
+
+class ChecklistItem(BaseModel):
+    """평가 체크리스트 아이템"""
+
+    checked: bool = Field(..., description="체크 여부")
+    weight: int = Field(..., ge=0, le=100, description="가중치")
+
+
+class ChecklistUpdateRequest(BaseModel):
+    """평가 체크리스트 업데이트 요청"""
+
+    checklist: dict[str, ChecklistItem] = Field(..., description="체크리스트")
+
+
+class ChecklistUpdateResponse(BaseModel):
+    """평가 체크리스트 업데이트 응답"""
+
+    checklist: dict[str, ChecklistItem] = Field(..., description="업데이트된 체크리스트")
+    achievement_rate: int = Field(..., alias="achievementRate", ge=0, le=100, description="달성률")
+    updated_at: datetime = Field(..., alias="updatedAt")
+
+    model_config = {"populate_by_name": True}

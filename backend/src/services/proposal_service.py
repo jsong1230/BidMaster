@@ -110,7 +110,7 @@ class ProposalService:
 
         if not proposal:
             raise NotFoundError(
-                code="PROPOSAL_002",
+                code="PROPOSAL_001",
                 message="제안서를 찾을 수 없습니다.",
             )
 
@@ -453,7 +453,7 @@ class ProposalService:
         total_words = 0
         for section in proposal.sections:
             if section.content:
-                total_words += len(section.content)
+                total_words += self._calculate_word_count(section.content)
 
         proposal.word_count = total_words
         # 페이지 수는 약 2000자당 1페이지로 계산
@@ -464,3 +464,252 @@ class ProposalService:
         stmt = select(User).where(User.id == user_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    # ============================================================
+    # F-05 제안서 편집기 메서드
+    # ============================================================
+
+    async def auto_save_sections(
+        self,
+        proposal_id: UUID,
+        user_id: UUID,
+        sections_data: list[dict],
+    ) -> dict:
+        """
+        섹션 자동 저장 (debounce)
+
+        Args:
+            proposal_id: 제안서 ID
+            user_id: 사용자 ID
+            sections_data: [{section_key, content, word_count?}, ...]
+
+        Returns:
+            {saved_at, word_count}
+        """
+        # 빈 섹션 배열 검증
+        if not sections_data:
+            raise ValidationError(
+                code="PROPOSAL_004",
+                message="섹션 배열이 비어 있습니다.",
+            )
+
+        proposal = await self.get_proposal(proposal_id, user_id)
+
+        now = datetime.now(timezone.utc)
+
+        for section_data in sections_data:
+            section_key = section_data.get("section_key")
+
+            # 유효한 섹션 키인지 확인
+            if section_key not in SECTION_DEFINITIONS:
+                raise ValidationError(
+                    code="SECTION_002",
+                    message=f"유효하지 않은 섹션 키입니다: {section_key}",
+                )
+
+            content = section_data.get("content", "")
+
+            # 섹션 조회
+            stmt = select(ProposalSection).where(
+                ProposalSection.proposal_id == proposal_id,
+                ProposalSection.section_key == section_key,
+            )
+            result = await self.db.execute(stmt)
+            section = result.scalar_one_or_none()
+
+            if section:
+                section.content = content
+                section.is_ai_generated = False
+                section.updated_at = now
+
+                # 메타데이터 업데이트
+                metadata = section.section_metadata or {}
+                metadata.update({
+                    "lastEditedBy": str(user_id),
+                    "editCount": (metadata.get("editCount", 0) or 0) + 1,
+                    "lastEditAt": now.isoformat(),
+                    "format": "html",
+                })
+                section.section_metadata = metadata
+
+        # 제안서 통계 업데이트
+        await self._update_proposal_stats(proposal)
+        proposal.updated_at = now
+
+        await self.db.flush()
+
+        return {
+            "saved_at": now.isoformat(),
+            "word_count": proposal.word_count,
+        }
+
+    async def validate_proposal(
+        self,
+        proposal_id: UUID,
+        user_id: UUID,
+        page_limit: int | None = None,
+    ) -> dict:
+        """
+        제안서 검증 (제출 전)
+
+        Args:
+            proposal_id: 제안서 ID
+            user_id: 사용자 ID
+            page_limit: 페이지 제한 (선택)
+
+        Returns:
+            {is_valid, warnings, stats}
+        """
+        # 페이지 제한 유효성 검사
+        if page_limit is not None and page_limit <= 0:
+            raise ValidationError(
+                code="PROPOSAL_005",
+                message="페이지 제한은 0보다 커야 합니다.",
+            )
+
+        proposal = await self.get_proposal(proposal_id, user_id, include_sections=True)
+
+        warnings = []
+        section_stats = []
+        total_word_count = 0
+        required_sections = ["overview", "technical"]
+
+        for section in proposal.sections:
+            content = section.content or ""
+            word_count = self._calculate_word_count(content)
+            is_empty = word_count == 0
+
+            section_stats.append({
+                "section_key": section.section_key,
+                "word_count": word_count,
+                "is_empty": is_empty,
+            })
+
+            total_word_count += word_count
+
+            # 필수 섹션 검증
+            if section.section_key in required_sections and is_empty:
+                warnings.append({
+                    "type": "required_field",
+                    "section": section.section_key,
+                    "message": f"{section.title} 섹션이 비어 있습니다.",
+                })
+
+        # 페이지 제한 검증
+        estimated_pages = max(1, total_word_count // 2000)  # 2000자당 1페이지
+        if page_limit and estimated_pages > page_limit:
+            warnings.append({
+                "type": "page_limit",
+                "section": None,
+                "message": f"페이지 제한을 초과했습니다. (현재 {estimated_pages}페이지 / 제한 {page_limit}페이지)",
+                "current": estimated_pages,
+                "limit": page_limit,
+            })
+
+        # 평가 항목 달성률 검증 (비차단 경고 - 정보 제공용)
+        evaluation_rate = self._calculate_evaluation_rate(proposal.evaluation_checklist)
+        if evaluation_rate < 50:
+            warnings.append({
+                "type": "evaluation_incomplete",
+                "section": None,
+                "message": f"평가 항목 달성률이 낮습니다. ({evaluation_rate}%)",
+            })
+
+        # 차단 경고만 검증 (required_field, page_limit)
+        blocking_warnings = [w for w in warnings if w["type"] in ["required_field", "page_limit"]]
+
+        return {
+            "is_valid": len(blocking_warnings) == 0,
+            "warnings": warnings,
+            "stats": {
+                "total_word_count": total_word_count,
+                "estimated_pages": estimated_pages,
+                "section_stats": section_stats,
+            },
+        }
+
+    async def update_evaluation_checklist(
+        self,
+        proposal_id: UUID,
+        user_id: UUID,
+        checklist: dict,
+    ) -> dict:
+        """
+        평가 체크리스트 업데이트
+
+        Args:
+            proposal_id: 제안서 ID
+            user_id: 사용자 ID
+            checklist: {key: {checked: bool, weight: int}, ...}
+
+        Returns:
+            {checklist, achievement_rate, updated_at}
+        """
+        proposal = await self.get_proposal(proposal_id, user_id, include_sections=False)
+
+        # 기존 체크리스트와 병합
+        current_checklist = proposal.evaluation_checklist or {}
+        current_checklist.update(checklist)
+        proposal.evaluation_checklist = current_checklist
+
+        # 달성률 계산
+        achievement_rate = self._calculate_evaluation_rate(current_checklist)
+
+        now = datetime.now(timezone.utc)
+        proposal.updated_at = now
+
+        await self.db.flush()
+
+        return {
+            "checklist": current_checklist,
+            "achievement_rate": achievement_rate,
+            "updated_at": now.isoformat(),
+        }
+
+    def _calculate_word_count(self, content: str) -> int:
+        """
+        HTML 콘텐츠에서 단어 수 계산
+
+        한국어: 글자 수 기준
+        영어: 공백 기준 단어 수
+        """
+        import re
+
+        if not content:
+            return 0
+
+        # HTML 태그 제거
+        text = re.sub(r"<[^>]+>", "", content)
+
+        # 공백 정리
+        text = text.strip()
+
+        if not text:
+            return 0
+
+        # 한글 글자 수 + 영어 단어 수
+        korean_chars = len(re.findall(r"[가-힣]", text))
+        english_words = len(re.findall(r"[a-zA-Z]+", text))
+
+        return korean_chars + english_words
+
+    def _calculate_evaluation_rate(self, checklist: dict | None) -> int:
+        """평가 항목 달성률 계산"""
+        if not checklist:
+            return 0
+
+        total_weight = 0
+        checked_weight = 0
+
+        for key, value in checklist.items():
+            if isinstance(value, dict):
+                weight = value.get("weight", 0)
+                checked = value.get("checked", False)
+                total_weight += weight
+                if checked:
+                    checked_weight += weight
+
+        if total_weight == 0:
+            return 0
+
+        return int((checked_weight / total_weight) * 100)

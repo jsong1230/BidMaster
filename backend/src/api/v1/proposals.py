@@ -1,7 +1,6 @@
 """제안서 API (F-03) - SSE 스트리밍 지원"""
 import json
 import logging
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -10,16 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.exceptions import NotFoundError, PermissionError
-from src.models.proposal_section import SECTION_DEFINITIONS
 from src.schemas.proposal import (
+    AutoSaveRequest,
+    ChecklistUpdateRequest,
     ExportRequest,
     GenerateProposalRequest,
     GenerateSectionRequest,
     ProposalCreate,
-    ProposalDetailResponse,
-    ProposalSectionResponse,
     ProposalSectionUpdate,
     ProposalUpdate,
+    ValidationRequest,
 )
 from src.services.proposal_generator_service import ProposalGeneratorService
 from src.services.proposal_service import ProposalService
@@ -29,11 +28,27 @@ router = APIRouter()
 
 
 def get_current_user_id(request: Request) -> UUID:
-    """현재 사용자 ID 추출 (임시)"""
-    user_id = request.state.user_id if hasattr(request.state, "user_id") else None
-    if not user_id:
+    """현재 사용자 ID 추출"""
+    # 먼저 request.state.user_id 확인 (미들웨어에서 설정된 경우)
+    if hasattr(request.state, "user_id") and request.state.user_id:
+        return UUID(str(request.state.user_id))
+
+    # 없으면 Authorization 헤더에서 토큰 추출
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="인증이 필요합니다.")
-    return UUID(str(user_id))
+
+    token = auth_header.replace("Bearer ", "")
+    try:
+        from src.core.security import decode_token
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+        return UUID(str(user_id))
+    except Exception:
+        # 디코딩 실패 시 HTTPException으로 처리
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
 
 
 # ============================================================
@@ -505,4 +520,161 @@ async def export_proposal(
             "expiresAt": "2026-03-13T00:00:00Z",
         },
         "message": f"{data.format.upper()} 파일 생성이 요청되었습니다.",
+    }
+
+
+# ============================================================
+# F-05 제안서 편집기 API
+# ============================================================
+
+
+@router.patch("/{proposal_id}/auto-save", response_model=dict)
+async def auto_save_proposal(
+    proposal_id: UUID,
+    request: Request,
+    data: AutoSaveRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    섹션 자동 저장 (debounce)
+
+    30초 debounce로 섹션 내용을 자동 저장합니다.
+    """
+    user_id = get_current_user_id(request)
+    service = ProposalService(db)
+
+    sections_data = [item.model_dump() for item in data.sections]
+
+    try:
+        result = await service.auto_save_sections(
+            proposal_id=proposal_id,
+            user_id=user_id,
+            sections_data=sections_data,
+        )
+        await db.commit()
+    except Exception as e:
+        from src.core.exceptions import NotFoundError, PermissionError, ValidationError
+        if isinstance(e, (NotFoundError, PermissionError, ValidationError)):
+            raise HTTPException(status_code=e.status_code, detail={"code": e.code, "message": e.message})
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "success": True,
+        "data": {
+            "savedAt": result["saved_at"],
+            "wordCount": result["word_count"],
+        },
+    }
+
+
+@router.post("/{proposal_id}/validate", response_model=dict)
+async def validate_proposal(
+    proposal_id: UUID,
+    request: Request,
+    data: ValidationRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    제안서 검증 (제출 전)
+
+    필수 섹션, 페이지 제한, 평가 항목 체크리스트를 검증합니다.
+    """
+    user_id = get_current_user_id(request)
+    service = ProposalService(db)
+
+    page_limit = data.page_limit if data else None
+
+    try:
+        result = await service.validate_proposal(
+            proposal_id=proposal_id,
+            user_id=user_id,
+            page_limit=page_limit,
+        )
+    except Exception as e:
+        from src.core.exceptions import NotFoundError, PermissionError, ValidationError
+        if isinstance(e, (NotFoundError, PermissionError, ValidationError)):
+            raise HTTPException(status_code=e.status_code, detail={"code": e.code, "message": e.message})
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 응답 데이터 변환 (snake_case → camelCase)
+    warnings = []
+    for w in result["warnings"]:
+        warning_item = {
+            "type": w["type"],
+            "section": w.get("section"),
+            "message": w["message"],
+        }
+        if w.get("current") is not None:
+            warning_item["current"] = w["current"]
+        if w.get("limit") is not None:
+            warning_item["limit"] = w["limit"]
+        warnings.append(warning_item)
+
+    section_stats = []
+    for s in result["stats"]["section_stats"]:
+        section_stats.append({
+            "sectionKey": s["section_key"],
+            "wordCount": s["word_count"],
+            "isEmpty": s["is_empty"],
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "isValid": result["is_valid"],
+            "warnings": warnings,
+            "stats": {
+                "totalWordCount": result["stats"]["total_word_count"],
+                "estimatedPages": result["stats"]["estimated_pages"],
+                "sectionStats": section_stats,
+            },
+        },
+    }
+
+
+@router.patch("/{proposal_id}/evaluation-checklist", response_model=dict)
+async def update_evaluation_checklist(
+    proposal_id: UUID,
+    request: Request,
+    data: ChecklistUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    평가 체크리스트 업데이트
+
+    평가 항목 체크리스트를 업데이트하고 달성률을 계산합니다.
+    """
+    user_id = get_current_user_id(request)
+    service = ProposalService(db)
+
+    checklist_dict = {k: v.model_dump() for k, v in data.checklist.items()}
+
+    try:
+        result = await service.update_evaluation_checklist(
+            proposal_id=proposal_id,
+            user_id=user_id,
+            checklist=checklist_dict,
+        )
+        await db.commit()
+    except Exception as e:
+        from src.core.exceptions import NotFoundError, PermissionError, ValidationError
+        if isinstance(e, (NotFoundError, PermissionError, ValidationError)):
+            raise HTTPException(status_code=e.status_code, detail={"code": e.code, "message": e.message})
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 응답 데이터 변환
+    checklist_response = {}
+    for key, value in result["checklist"].items():
+        checklist_response[key] = {
+            "checked": value["checked"],
+            "weight": value["weight"],
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "checklist": checklist_response,
+            "achievementRate": result["achievement_rate"],
+            "updatedAt": result["updated_at"],
+        },
     }

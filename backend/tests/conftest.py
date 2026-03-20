@@ -10,14 +10,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlalchemy import JSON, String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 
 # 임시 Mock 구현 - 구현 후 실제 모듈로 교체
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
+
+# AppException alias for exception handler
+from src.core.exceptions import AppException as AppError
 
 
 # 테스트용 인메모리 SQLite 엔진
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# SQLite용 JSONB 대체 타입
+class SQLiteJSONB(JSON):
+    """SQLite용 JSONB 대체 타입"""
+    pass
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +46,16 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     각 테스트마다 격리된 인메모리 DB 사용
     """
     from src.core.database import Base
+    from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
+    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+
+    # SQLite 환경에서 JSONB/ARRAY 타입을 JSON으로 대체
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, PG_JSONB):
+                column.type = SQLiteJSONB()
+            if isinstance(column.type, PG_ARRAY):
+                column.type = JSON()
 
     engine = create_async_engine(
         TEST_DATABASE_URL,
@@ -70,10 +92,25 @@ class MockApp(FastAPI):
 
     def __init__(self):
         super().__init__()
+
+        # NOTE: middleware는 pytest-asyncio와 충돌하므로 제거
+        # 대신 client fixture에서 dependency override 사용
+
+        # 글로벌 예외 핸들러 등록
+        self.add_exception_handler(AppError, self._app_error_handler)
+        self.add_exception_handler(FastAPIHTTPException, self._http_exception_handler)
+
         # 임시 라우트 추가 (테스트 실행을 위해)
         @self.get("/")
         async def root():
             return {"message": "Mock API"}
+
+        # proposals 라우터 포함 (F-03, F-05 테스트용)
+        try:
+            from src.api.v1.proposals import router as proposals_router
+            self.include_router(proposals_router, prefix="/api/v1/proposals")
+        except ImportError:
+            pass
 
         # bids 라우터 포함 (F-01 통합 테스트용 — 501 mock 라우트보다 먼저 등록)
         try:
@@ -81,6 +118,42 @@ class MockApp(FastAPI):
             self.include_router(bids_router, prefix="/api/v1/bids")
         except ImportError:
             pass
+
+    @staticmethod
+    async def _app_error_handler(request: Request, exc: Exception):
+        """애플리케이션 예외 핸들러"""
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 500),
+            content={
+                "success": False,
+                "error": {
+                    "code": getattr(exc, "code", "UNKNOWN"),
+                    "message": getattr(exc, "message", str(exc)),
+                },
+            },
+        )
+
+    @staticmethod
+    async def _http_exception_handler(request: Request, exc: Exception):
+        """HTTP 예외 핸들러 (detail에서 에러 정보 추출)"""
+        detail = getattr(exc, "detail", None)
+        if isinstance(detail, dict):
+            error_code = detail.get("code", "UNKNOWN")
+            error_message = detail.get("message", "Unknown error")
+        else:
+            error_code = "UNKNOWN"
+            error_message = str(detail) if detail else str(exc)
+
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 500),
+            content={
+                "success": False,
+                "error": {
+                    "code": error_code,
+                    "message": error_message,
+                },
+            },
+        )
 
         @self.post("/api/v1/auth/register")
         async def mock_register(request: Request):
@@ -230,16 +303,7 @@ class MockPasswordResetToken:
         self.created_at = datetime.now(timezone.utc)
 
 
-app = MockApp()
-
-
-@pytest.fixture
-def mock_app() -> FastAPI:
-    """테스트용 FastAPI 앱 Fixture"""
-    return app
-
-
-# 에러 코드 정의
+# 에러 코드 정의 (MockApp보다 먼저 정의 필요)
 class AppError(Exception):
     """커스텀 에러 기본 클래스"""
     def __init__(self, code: str, message: str, status_code: int = 400):
@@ -279,6 +343,15 @@ VALIDATION_002 = ValidationError("VALIDATION_002", "필수 입력값 누락", 40
 VALIDATION_003 = ValidationError("VALIDATION_003", "입력값 길이 초과", 400)
 
 
+app = MockApp()
+
+
+@pytest.fixture
+def mock_app() -> FastAPI:
+    """테스트용 FastAPI 앱 Fixture"""
+    return app
+
+
 @pytest.fixture
 async def async_client(mock_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """
@@ -287,6 +360,73 @@ async def async_client(mock_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=mock_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+@pytest.fixture
+async def client(mock_app: FastAPI, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """
+    테스트용 비동기 HTTP 클라이언트 Fixture (별칭)
+    MockApp의 미들웨어가 Authorization 헤더를 처리하여 request.state.user_id 설정
+    데이터베이스 세션을 의존성으로 오버라이드
+    """
+    from src.core.database import get_db
+
+    # 데이터베이스 의존성 오버라이드
+    async def override_get_db():
+        yield db_session
+
+    mock_app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=mock_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    # 의존성 오버라이드 정리
+    mock_app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_headers():
+    """인증 헤더 픽스처 (테스트용 JWT 토큰 시뮬레이션)"""
+    try:
+        from src.core.security import create_access_token
+        user_id = str(uuid4())
+        token = create_access_token(
+            user_id,
+            extra_data={"company_id": None, "role": "user"}
+        )
+        return {"Authorization": f"Bearer {token}", "user_id": user_id}
+    except ImportError:
+        # security 모듈이 없으면 mock 토큰 반환
+        import base64
+        import json
+        user_id = str(uuid4())
+        token_data = json.dumps({"sub": user_id, "exp": 9999999999})
+        mock_token = base64.b64encode(token_data.encode()).decode()
+        return {"Authorization": f"Bearer mock_{mock_token}", "user_id": user_id}
+
+
+@pytest.fixture
+def get_auth_headers_for_user():
+    """특정 사용자를 위한 인증 헤더 생성 함수"""
+    def _create_headers(user):
+        try:
+            from src.core.security import create_access_token
+            user_id = str(user.id)
+            token = create_access_token(
+                user_id,
+                extra_data={"company_id": None, "role": "user"}
+            )
+            return {"Authorization": f"Bearer {token}"}
+        except ImportError:
+            # security 모듈이 없으면 mock 토큰 반환
+            import base64
+            import json
+            user_id = str(user.id)
+            token_data = json.dumps({"sub": user_id, "exp": 9999999999})
+            mock_token = base64.b64encode(token_data.encode()).decode()
+            return {"Authorization": f"Bearer mock_{mock_token}"}
+    return _create_headers
 
 
 @pytest.fixture

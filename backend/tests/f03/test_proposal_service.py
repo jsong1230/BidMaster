@@ -28,7 +28,7 @@ async def test_user(db_session: AsyncSession) -> User:
         email="test@example.com",
         name="테스트 사용자",
         phone="010-1234-5678",
-        hashed_password="hashed_password",
+        password_hash="hashed_password",
     )
     db_session.add(user)
     await db_session.flush()

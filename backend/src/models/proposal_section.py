@@ -13,10 +13,10 @@ from src.core.database import Base
 SECTION_DEFINITIONS = {
     "overview": {"title": "사업 개요", "order": 1},
     "technical": {"title": "기술 제안", "order": 2},
-    "methodology": {"title": "수행 방법론", "order": 3},
+    "price": {"title": "가격 제안", "order": 3},
     "schedule": {"title": "추진 일정", "order": 4},
     "organization": {"title": "조직 구성", "order": 5},
-    "budget": {"title": "예산", "order": 6},
+    "past_performance": {"title": "수행 실적", "order": 6},
 }
 
 

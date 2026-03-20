@@ -4,12 +4,15 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProposalStore } from '@/stores/proposalStore';
+import { useEditorStore } from '@/stores/editorStore';
 import { ProposalHeader } from './ProposalHeader';
-import { SectionNavigation } from './SectionNavigation';
-import { ProposalSection as ProposalSectionComponent } from './ProposalSection';
+import { SectionNavigator } from './sidebar/SectionNavigator';
+import { EvaluationPanel } from './sidebar/EvaluationPanel';
+import { SectionEditor } from './editor/SectionEditor';
+import type { SectionKey } from '@/types/proposal';
 
 interface ProposalDetailPageProps {
   proposalId: string;
@@ -18,14 +21,20 @@ interface ProposalDetailPageProps {
 export function ProposalDetailPage({ proposalId }: ProposalDetailPageProps) {
   const router = useRouter();
   const { currentProposal, isDetailLoading, detailError, fetchProposal, resetDetail } = useProposalStore();
+  const { mode, setActiveSection, reset: resetEditor } = useEditorStore();
+  const [checklist, setChecklist] = useState<Record<string, unknown> | null>(null);
+
+  // 편집 모드 vs 뷰 모드 결정 (ready 상태만 편집 가능)
+  const canEdit = currentProposal?.status === 'ready' || currentProposal?.status === 'draft';
 
   useEffect(() => {
     fetchProposal(proposalId);
 
     return () => {
       resetDetail();
+      resetEditor();
     };
-  }, [proposalId]);
+  }, [proposalId, resetEditor]);
 
   // 생성 중 상태면 진행 페이지로 리다이렉트
   useEffect(() => {
@@ -33,6 +42,25 @@ export function ProposalDetailPage({ proposalId }: ProposalDetailPageProps) {
       router.push(`/proposals/${proposalId}/generate`);
     }
   }, [currentProposal?.status, proposalId, router]);
+
+  // 평가 체크리스트 초기화
+  useEffect(() => {
+    if (currentProposal?.evaluationChecklist) {
+      setChecklist(currentProposal.evaluationChecklist);
+    }
+  }, [currentProposal?.evaluationChecklist]);
+
+  // 평가 체크리스트 업데이트 핸들러
+  const handleChecklistChange = async (newChecklist: Record<string, unknown>) => {
+    setChecklist(newChecklist);
+    try {
+      await import('@/lib/api/proposal').then(({ proposalApi }) => {
+        return proposalApi.updateEvaluationChecklist(proposalId, { checklist: newChecklist as any });
+      });
+    } catch (err) {
+      console.error('평가 체크리스트 업데이트 실패:', err);
+    }
+  };
 
   if (isDetailLoading) {
     return (
@@ -69,37 +97,62 @@ export function ProposalDetailPage({ proposalId }: ProposalDetailPageProps) {
   }
 
   const sortedSections = [...currentProposal.sections].sort((a, b) => a.order - b.order);
+  const sectionNavigatorItems = sortedSections.map((s) => ({
+    key: s.sectionKey,
+    title: s.title,
+    completed: s.wordCount > 0,
+  }));
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* 헤더 */}
       <ProposalHeader proposal={currentProposal} />
 
       {/* 메인 콘텐츠 */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 섹션 네비게이션 (데스크톱) */}
-        <aside className="hidden lg:block sticky top-6 h-fit">
+        {/* 사이드바 (데스크톱) */}
+        <aside className="hidden lg:block space-y-4 sticky top-6 h-fit">
+          {/* 섹션 네비게이션 */}
           <div className="bg-white border border-neutral-200 rounded-lg p-4">
-            <SectionNavigation sections={sortedSections} />
+            <SectionNavigator
+              sections={sectionNavigatorItems}
+              activeSection={currentProposal.sections.find((s) => s.wordCount > 0)?.sectionKey}
+              onSectionClick={(key) => setActiveSection(key as SectionKey)}
+            />
           </div>
+
+          {/* 평가 기준 패널 */}
+          {checklist && (
+            <EvaluationPanel
+              checklist={checklist as any}
+              onChecklistChange={handleChecklistChange}
+              disabled={!canEdit}
+            />
+          )}
         </aside>
 
         {/* 섹션 내용 */}
         <div className="lg:col-span-3 space-y-8">
           {sortedSections.map((section) => (
-            <ProposalSectionComponent
+            <SectionEditor
               key={section.id}
               section={section}
               proposalId={proposalId}
+              mode={canEdit ? 'edit' : 'view'}
+              sectionId={`section-${section.sectionKey}`}
             />
           ))}
         </div>
       </div>
 
-      {/* 모바일 섹션 네비게이션 */}
+      {/* 모바일 사이드바 */}
       <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40">
         <div className="bg-white border border-neutral-200 rounded-lg shadow-lg p-4 max-h-48 overflow-y-auto">
-          <SectionNavigation sections={sortedSections} />
+          <SectionNavigator
+            sections={sectionNavigatorItems}
+            activeSection={currentProposal.sections.find((s) => s.wordCount > 0)?.sectionKey}
+            onSectionClick={(key) => setActiveSection(key as SectionKey)}
+          />
         </div>
       </div>
     </div>

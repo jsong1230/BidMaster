@@ -14,6 +14,11 @@ import type {
   DownloadFormat,
   DownloadResponse,
   SSEEvent,
+  AutoSaveRequest,
+  AutoSaveResponse,
+  ValidationResponse,
+  ChecklistUpdateRequest,
+  ChecklistUpdateResponse,
 } from '@/types/proposal';
 export type { SSEEvent } from '@/types/proposal';
 import { apiClient } from './client';
@@ -119,6 +124,34 @@ export const proposalApi = {
       contentType: response.headers.get('Content-Type') || '',
       data,
     };
+  },
+
+  /**
+   * 제안서 자동 저장 (F-05)
+   */
+  autoSave: async (proposalId: string, data: AutoSaveRequest): Promise<AutoSaveResponse> => {
+    return apiClient.patch<AutoSaveResponse>(`/proposals/${proposalId}/auto-save`, data);
+  },
+
+  /**
+   * 제안서 검증 (F-05)
+   */
+  validate: async (proposalId: string, pageLimit?: number): Promise<ValidationResponse> => {
+    const body = pageLimit !== undefined ? { pageLimit } : undefined;
+    return apiClient.post<ValidationResponse>(`/proposals/${proposalId}/validate`, body);
+  },
+
+  /**
+   * 평가 기준 체크리스트 업데이트 (F-05)
+   */
+  updateEvaluationChecklist: async (
+    proposalId: string,
+    data: ChecklistUpdateRequest
+  ): Promise<ChecklistUpdateResponse> => {
+    return apiClient.patch<ChecklistUpdateResponse>(
+      `/proposals/${proposalId}/evaluation-checklist`,
+      data
+    );
   },
 };
 
